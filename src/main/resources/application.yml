@@ -16,3 +16,8 @@ spring:
     properties:
       hibernate:
         format_sql: true
+
+# JWT — secret은 Base64 인코딩된 256비트 이상 키. 운영에서는 JWT_SECRET 환경변수로 주입
+jwt:
+  secret: ${JWT_SECRET:ZGV2LW9ubHktc2VjcmV0LWtleS1mb3Itc3ByaW5nLWRlbGl2ZXJ5LW1pbmktand0LTI1NmJpdA==}
+  expiration-ms: 3600000  # 1시간
