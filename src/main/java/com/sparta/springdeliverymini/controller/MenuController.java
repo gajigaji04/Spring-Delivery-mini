@@ -38,4 +38,23 @@ public class MenuController {
     public MenuResponse getMenu(@PathVariable Long id) {
         return menuService.getMenu(id);
     }
+
+    @PutMapping("/menus/{id}")
+    public ResponseEntity<MenuResponse> putMenu(
+            @PathVariable Long id,
+            // 요청 Body의 JSON을 MenuCreateRequest로 변환 및 검증
+            @Valid @RequestBody MenuCreateRequest request,
+            // JWT 인증을 통해 현재 로그인한 사용자 정보 확인
+            Authentication authentication) {
+
+        // Service에 전달하여 실제 수정 로직 수행
+        MenuResponse menu = menuService.putMenu(
+                id,
+                request,
+                authentication.getName()
+        );
+
+        // 수정 성공 시 200 OK와 수정된 메뉴 정보 반환
+        return ResponseEntity.status(HttpStatus.OK).body(menu);
+    }
 }
