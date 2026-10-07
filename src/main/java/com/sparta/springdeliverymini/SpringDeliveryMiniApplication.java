@@ -5,6 +5,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.data.jpa.repository.config.EnableJpaAuditing;
 
 @SpringBootApplication
+// JPA Auditing 활성화
 @EnableJpaAuditing
 public class SpringDeliveryMiniApplication {
 
