@@ -2,17 +2,17 @@ package com.sparta.springdeliverymini.service;
 
 import com.sparta.springdeliverymini.dto.OrderCreateRequest;
 import com.sparta.springdeliverymini.dto.OrderResponse;
-import com.sparta.springdeliverymini.entity.Menu;
-import com.sparta.springdeliverymini.entity.Order;
-import com.sparta.springdeliverymini.entity.OrderStatus;
-import com.sparta.springdeliverymini.entity.User;
+import com.sparta.springdeliverymini.entity.*;
 import com.sparta.springdeliverymini.exception.ApiException;
 import com.sparta.springdeliverymini.repository.MenuRepository;
 import com.sparta.springdeliverymini.repository.OrderRepository;
 import com.sparta.springdeliverymini.repository.UserRepository;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.util.List;
 
 @Service
 @Transactional(readOnly = true)
@@ -26,6 +26,35 @@ public class OrderService {
         this.orderRepository = orderRepository;
         this.menuRepository = menuRepository;
         this.userRepository = userRepository;
+    }
+
+    public List<OrderResponse> getOrders(String username) {
+        // 1. 현재 로그인한 사용자 찾기
+        User currentUser = userRepository.findByUsername(username)
+                .orElseThrow(() ->
+                        new ApiException(
+                                HttpStatus.UNAUTHORIZED,
+                                "존재하지 않는 회원입니다."
+                        )
+                );
+
+        // 2. CUSTOMER는 본인의 주문만 조회
+        if (currentUser.getRole() == Role.CUSTOMER) {
+            return orderRepository.findAllByUserId(currentUser.getId())
+                    .stream()
+                    .map(OrderResponse::from)
+                    .toList();
+        }
+
+        // 3. OWNER는 본인의 메뉴에 들어온 주문만 조회
+        if (currentUser.getRole() == Role.OWNER) {
+            return orderRepository.findAllByMenuOwnerId(currentUser.getId())
+                    .stream()
+                    .map(OrderResponse::from)
+                    .toList();
+        }
+
+        return List.of();
     }
 
     @Transactional
