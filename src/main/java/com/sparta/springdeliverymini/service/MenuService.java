@@ -9,6 +9,7 @@ import com.sparta.springdeliverymini.repository.MenuRepository;
 import com.sparta.springdeliverymini.repository.UserRepository;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -94,6 +95,39 @@ public class MenuService {
 
         // 5. Dirty Checking으로 UPDATE
         return MenuResponse.from(menu);
+    }
+
+    @Transactional // deleted = true 변경을 JPA가 감지해서
+    public void deleteMenu(Long id, String username) {
+
+        // 1. 현재 로그인한 사용자 찾기
+        User currentUser = userRepository.findByUsername(username)
+                .orElseThrow(() ->
+                        new ApiException(
+                                HttpStatus.UNAUTHORIZED,
+                                "존재하지 않는 회원입니다."
+                        )
+                );
+
+        // 2. 삭제할 메뉴 찾기
+        Menu menu = menuRepository.findByIdAndDeletedFalse(id)
+                .orElseThrow(() ->
+                        new ApiException(
+                                HttpStatus.NOT_FOUND,
+                                "메뉴가 없습니다."
+                        )
+                );
+
+        // 3. 현재 사용자가 메뉴의 주인인지 확인
+        if (!menu.getOwner().getId().equals(currentUser.getId())) {
+            throw new ApiException(
+                    HttpStatus.FORBIDDEN,
+                    "다른 사장님의 메뉴입니다."
+            );
+        }
+
+        // 4. 실제 삭제하지 않고 삭제된 것으로 표시
+        menu.delete();
     }
 }
 

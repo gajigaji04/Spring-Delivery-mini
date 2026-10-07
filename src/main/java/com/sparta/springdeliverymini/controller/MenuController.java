@@ -57,4 +57,16 @@ public class MenuController {
         // 수정 성공 시 200 OK와 수정된 메뉴 정보 반환
         return ResponseEntity.status(HttpStatus.OK).body(menu);
     }
+
+    @DeleteMapping("/menus/{id}")
+    public ResponseEntity<Void> deleteMenu(
+            @PathVariable Long id,
+            Authentication authentication
+    ) {
+        // 삭제할 메뉴의 정보를 Service에 전달
+        menuService.deleteMenu(id, authentication.getName());
+
+        // 삭제 성공 응답으로 줄 데이터 제외
+        return ResponseEntity.noContent().build();
+    }
 }
