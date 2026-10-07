@@ -1,0 +1,18 @@
+spring:
+  application:
+    name: delivery
+
+  # DB 연결 — 3-3의 docker run 값과 똑같이
+  datasource:
+    url: jdbc:postgresql://localhost:5432/delivery
+    username: postgres              # 설치할 때 쓴 계정 (Windows 설치 프로그램은 postgres)
+    password: postgres1234
+
+  # JPA
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
