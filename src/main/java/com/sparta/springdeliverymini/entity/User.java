@@ -1,6 +1,5 @@
 package com.sparta.springdeliverymini.entity;
 
-import com.fasterxml.jackson.annotation.JsonCreator;
 import jakarta.persistence.*;
 
 @Entity
