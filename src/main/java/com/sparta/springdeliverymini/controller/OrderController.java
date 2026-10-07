@@ -4,7 +4,6 @@ import com.sparta.springdeliverymini.dto.OrderCreateRequest;
 import com.sparta.springdeliverymini.dto.OrderResponse;
 import com.sparta.springdeliverymini.service.OrderService;
 import jakarta.validation.Valid;
-import org.springframework.data.repository.cdi.Eager;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -22,6 +21,7 @@ public class OrderController {
         this.orderService = orderService;
     }
 
+    // COSTOMER만 주문 생성 가능
     // CUSTOMER 권한 확인은 SecurityConfig에서 토큰의 role로 처리 (OWNER → 403)
     @PostMapping("/orders")
     public ResponseEntity<OrderResponse> createOrder(
@@ -41,5 +41,16 @@ public class OrderController {
     ) {
         // JWT에서 현재 로그인한 사용자의 username을 가져와 주문 조회
         return orderService.getOrders(authentication.getName());
+    }
+
+    // Patch: 주문 삭제가 아닌 주문요청 -> 주문취소로 상태 변경 위함
+    @PatchMapping("/orders/{id}/cancel")
+    public ResponseEntity<Void> cancelOrder(
+            @PathVariable Long id,
+            Authentication authentication
+    ) {
+        orderService.cancelOrder(id, authentication.getName());
+
+        return ResponseEntity.noContent().build();
     }
 }

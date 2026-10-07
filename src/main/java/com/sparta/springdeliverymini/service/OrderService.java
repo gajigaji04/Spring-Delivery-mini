@@ -86,9 +86,64 @@ public class OrderService {
                 request.quantity(),
                 totalPrice,
                 request.deliveryAddress(),
-                OrderStatus.REQUESTED
+                OrderStatus.ORDER_REQUEST
         );
 
         return OrderResponse.from(orderRepository.save(order));
+    }
+
+    @Transactional
+    public void cancelOrder(Long id, String username) {
+
+        // 1. 현재 로그인한 사용자 조회
+        // username으로 User를 찾는다.
+        User currentUser = userRepository.findByUsername(username)
+                .orElseThrow(() ->
+                        new ApiException(
+                                HttpStatus.UNAUTHORIZED,
+                                "존재하지 않는 회원입니다."
+                        )
+                );
+
+        // 2. CUSTOMER인지 확인
+        // OWNER는 주문 취소 불가 → 403
+        if (currentUser.getRole() != Role.CUSTOMER) {
+            throw new ApiException(
+                    HttpStatus.FORBIDDEN,
+                    "CUSTOMER만 주문을 취소할 수 있습니다."
+            );
+        }
+
+        // 3. 주문 조회
+        // 주문이 존재하지 않으면 → 404
+        Order order = orderRepository.findById(id)
+                .orElseThrow(() ->
+                        new ApiException(
+                                HttpStatus.NOT_FOUND,
+                                "주문이 없습니다."
+                        )
+                );
+
+        // 4. 본인 주문인지 확인
+        // 다른 CUSTOMER의 주문이면 → 403
+        if (!order.getUser().getId().equals(currentUser.getId())) {
+            throw new ApiException(
+                    HttpStatus.FORBIDDEN,
+                    "본인의 주문만 취소할 수 있습니다."
+            );
+        }
+
+        // 5. 주문요청 상태인지 확인
+        // 결제완료 등 다른 상태라면 → 409
+        if (order.getStatus() != OrderStatus.ORDER_REQUEST) {
+            throw new ApiException(
+                    HttpStatus.CONFLICT,
+                    "주문요청 상태에서만 주문을 취소할 수 있습니다."
+            );
+        }
+
+        // 6. 주문 취소
+        // ORDER_REQUEST → ORDER_CANCELLED
+        order.changeStatus(OrderStatus.ORDER_CANCELLED);
     }
 }
