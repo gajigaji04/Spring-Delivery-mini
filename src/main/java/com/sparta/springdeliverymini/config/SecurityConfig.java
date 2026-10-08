@@ -52,6 +52,9 @@ public class SecurityConfig {
                         // 주문 생성은 CUSTOMER만 가능
                         .requestMatchers(HttpMethod.POST, "/api/orders/**").hasRole("CUSTOMER")
 
+                        // 주문 상태 변경(수락/배달완료)은 OWNER만 가능 (CUSTOMER → 403)
+                        .requestMatchers(HttpMethod.PATCH, "/api/orders/*/status").hasRole("OWNER")
+
                         .anyRequest().authenticated()
                 )
                 .exceptionHandling(exception -> exception

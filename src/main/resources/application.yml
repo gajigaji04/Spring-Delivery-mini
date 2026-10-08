@@ -5,8 +5,8 @@ spring:
   # DB 연결 — 3-3의 docker run 값과 똑같이
   datasource:
     url: jdbc:postgresql://localhost:5432/delivery
-    username: postgres              # 설치할 때 쓴 계정 (Windows 설치 프로그램은 postgres)
-    password: postgres1234
+    username: ${DB_USERNAME} # 환경변수로 지정
+    password: ${DB_PASSWORD}
 
   # JPA
   jpa:

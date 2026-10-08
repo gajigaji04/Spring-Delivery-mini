@@ -2,6 +2,7 @@ package com.sparta.springdeliverymini.controller;
 
 import com.sparta.springdeliverymini.dto.OrderCreateRequest;
 import com.sparta.springdeliverymini.dto.OrderResponse;
+import com.sparta.springdeliverymini.dto.OrderStatusUpdateRequest;
 import com.sparta.springdeliverymini.service.OrderService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
@@ -51,6 +52,24 @@ public class OrderController {
     ) {
         orderService.cancelOrder(id, authentication.getName());
 
+        return ResponseEntity.noContent().build();
+    }
+
+    // OWNER만 주문 상태 변경 가능 (결제완료 → 주문수락, 주문수락 → 배달완료)
+    // 권한·본인 메뉴 여부·상태 전이 검증은 Service에서 처리
+    @PatchMapping("/orders/{id}/status")
+    public ResponseEntity<Void> statusOrder(
+            @PathVariable Long id,
+            @Valid @RequestBody OrderStatusUpdateRequest request,
+            Authentication authentication
+    ) {
+        orderService.statusOrder(
+                id,
+                authentication.getName(),
+                request.status()
+        );
+
+        // 상태 변경 성공 시 204 No Content
         return ResponseEntity.noContent().build();
     }
 }
