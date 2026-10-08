@@ -9,7 +9,7 @@
 | 언어 · 프레임워크 | Java 21 · Spring Boot 4.1.x |
 | 빌드 도구 | Gradle |
 | 데이터베이스 | PostgreSQL 18 |
-| 사용 기술 | Spring Web · Spring Data JPA · PostgreSQL Driver · Spring Security · Validation · Lombok · JWT (JJWT) |
+| 사용 기술 | Spring Web · Spring Data JPA · PostgreSQL Driver · Spring Security · Validation · Lombok(의존성만 추가) · JWT (JJWT) |
 | API 테스트 | Postman |
 
 ## 3. 프로젝트 구조

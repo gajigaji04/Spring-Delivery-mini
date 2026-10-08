@@ -14,7 +14,7 @@ public record SignupRequest(
 
         // BCrypt는 72바이트까지만 처리하므로 상한을 둠
         @NotBlank(message = "비밀번호를 입력해야 합니다.")
-        @Size(min = 8, max = 72, message = "비밀번호는 8자 이상이어야 합니다.")
+        @Size(min = 8, max = 72, message = "비밀번호는 8~72자여야 합니다.")
         String password,
 
         // CUSTOMER(고객) 또는 OWNER(사장님)
