@@ -49,6 +49,9 @@ public class SecurityConfig {
                         // 메뉴 등록은 OWNER만 가능
                         .requestMatchers(HttpMethod.POST, "/api/menus/**").hasRole("OWNER")
 
+                        // 주문 생성은 CUSTOMER만 가능
+                        .requestMatchers(HttpMethod.POST, "/api/orders/**").hasRole("CUSTOMER")
+
                         .anyRequest().authenticated()
                 )
                 .exceptionHandling(exception -> exception
