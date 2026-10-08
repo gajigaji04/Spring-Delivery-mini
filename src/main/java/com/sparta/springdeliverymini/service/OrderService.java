@@ -94,7 +94,6 @@ public class OrderService {
 
     @Transactional
     public void cancelOrder(Long id, String username) {
-
         // 1. 현재 로그인한 사용자 조회
         // username으로 User를 찾는다.
         User currentUser = userRepository.findByUsername(username)
@@ -145,5 +144,82 @@ public class OrderService {
         // 6. 주문 취소
         // ORDER_REQUEST → ORDER_CANCELLED
         order.changeStatus(OrderStatus.ORDER_CANCELLED);
+    }
+
+    @Transactional
+    public void statusOrder(
+            Long id,
+            String username,
+            OrderStatus newStatus
+    ) {
+        // 1. 현재 로그인한 사용자 조회
+        // 토큰은 유효하지만 그 사이 회원이 삭제된 경우 → 401
+        User currentUser = userRepository.findByUsername(username)
+                .orElseThrow(() ->
+                        new ApiException(
+                                HttpStatus.UNAUTHORIZED,
+                                "존재하지 않는 회원입니다."
+                        )
+                );
+
+        // 2. OWNER인지 확인
+        // CUSTOMER는 주문 상태 변경 불가 → 403
+        if (currentUser.getRole() != Role.OWNER) {
+            throw new ApiException(
+                    HttpStatus.FORBIDDEN,
+                    "OWNER만 주문을 처리할 수 있습니다."
+            );
+        }
+
+        // 3. 주문 조회
+        // 주문이 존재하지 않으면 → 404
+        Order order = orderRepository.findById(id)
+                .orElseThrow(() ->
+                        new ApiException(
+                                HttpStatus.NOT_FOUND,
+                                "주문이 없습니다."
+                        )
+                );
+
+        // 4. 본인 메뉴에 들어온 주문인지 확인
+        // 다른 OWNER의 메뉴에 들어온 주문이면 → 403
+        if (!order.getMenu().getOwner().getId().equals(currentUser.getId())) {
+            throw new ApiException(
+                    HttpStatus.FORBIDDEN,
+                    "본인 메뉴에 들어온 주문만 처리할 수 있습니다."
+            );
+        }
+
+        // 5. 이미 배달완료된 주문인지 확인
+        // 배달완료 이후에는 다시 수락하는 등 어떤 변경도 불가 → 409
+        if (order.getStatus() == OrderStatus.DELIVERY_COMPLETED) {
+            throw new ApiException(
+                    HttpStatus.CONFLICT,
+                    "이미 배달완료된 주문은 상태를 변경할 수 없습니다."
+            );
+        }
+
+        // 6. 허용된 상태 변경인지 확인
+        // 허용: 결제완료 → 주문수락, 주문수락 → 배달완료
+        if (order.getStatus() == OrderStatus.PAYMENT_COMPLETED
+                && newStatus == OrderStatus.ORDER_ACCEPTED) {
+
+            // PAYMENT_COMPLETED → ORDER_ACCEPTED
+            order.changeStatus(OrderStatus.ORDER_ACCEPTED);
+
+        } else if (order.getStatus() == OrderStatus.ORDER_ACCEPTED
+                && newStatus == OrderStatus.DELIVERY_COMPLETED) {
+
+            // ORDER_ACCEPTED → DELIVERY_COMPLETED
+            order.changeStatus(OrderStatus.DELIVERY_COMPLETED);
+
+        } else {
+            // 그 외 변경은 모두 거절 → 409
+            // 예) 결제 전(주문요청) 주문을 수락, 취소된 주문 변경, 단계 건너뛰기(결제완료 → 배달완료)
+            throw new ApiException(
+                    HttpStatus.CONFLICT,
+                    "허용되지 않는 주문 상태 변경입니다."
+            );
+        }
     }
 }
