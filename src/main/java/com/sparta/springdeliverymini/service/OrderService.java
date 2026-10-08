@@ -133,7 +133,7 @@ public class OrderService {
         }
 
         // 5. 주문요청 상태인지 확인
-        // 결제완료 등 다른 상태라면 → 409
+        // 결제완료(PAYMENT_COMPLETED)된 주문 등 다른 상태라면 취소 불가 → 409
         if (order.getStatus() != OrderStatus.ORDER_REQUEST) {
             throw new ApiException(
                     HttpStatus.CONFLICT,

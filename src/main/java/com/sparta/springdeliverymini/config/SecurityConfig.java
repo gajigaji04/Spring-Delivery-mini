@@ -55,6 +55,9 @@ public class SecurityConfig {
                         // 주문 상태 변경(수락/배달완료)은 OWNER만 가능 (CUSTOMER → 403)
                         .requestMatchers(HttpMethod.PATCH, "/api/orders/*/status").hasRole("OWNER")
 
+                        // 결제는 CUSTOMER만 가능 (OWNER → 403)
+                        .requestMatchers(HttpMethod.POST, "/api/payments/**").hasRole("CUSTOMER")
+
                         .anyRequest().authenticated()
                 )
                 .exceptionHandling(exception -> exception
