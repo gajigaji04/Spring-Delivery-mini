@@ -1,5 +1,6 @@
 package com.sparta.springdeliverymini.exception;
 
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -10,6 +11,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import java.util.Map;
 
+@Slf4j // Lombok: log 필드 자동 생성
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
@@ -19,10 +21,15 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(e.getStatus()).body(Map.of("message", e.getMessage()));
     }
 
-    // 동시에 같은 아이디로 가입해 중복 체크를 통과한 경우에도 DB unique 제약으로 409
+    // Service에서 따로 처리하지 못한 DB 제약 조건 위반 (NOT NULL, UNIQUE, FK 등)
+    // 어느 API에서든 발생할 수 있으므로 특정 상황(예: 아이디 중복)을 가정한 메시지를 쓰지 않음
+    // 아이디 중복·중복 결제처럼 예상 가능한 경우는 UserService, PaymentService에서 직접 잡아 구체적인 메시지로 응답
+    // 원인 파악을 위해 실제 DB 에러는 서버 로그에 남김
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity<Map<String, String>> handleDataIntegrity(DataIntegrityViolationException e) {
-        return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("message", "이미 사용 중인 아이디입니다."));
+        log.error("DB 제약 조건 위반", e);
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(Map.of("message", "데이터 저장 중 제약 조건을 위반했습니다."));
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
