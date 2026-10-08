@@ -1,9 +1,14 @@
 package com.sparta.springdeliverymini.entity;
 
+import lombok.AccessLevel;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
 import jakarta.persistence.*;
 
 @Entity
 @Table(name = "users") // user는 PostgreSQL 예약어라 테이블명을 users로 지정
+@Getter
+@NoArgsConstructor(access = AccessLevel.PROTECTED) // JPA용 기본 생성자, 외부에서 new 금지
 public class User {
 
     @Id
@@ -20,28 +25,9 @@ public class User {
     @Column(nullable = false)
     private Role role;
 
-    protected User() {
-    }
-
     public User(String username, String password, Role role) {
         this.username = username;
         this.password = password;
         this.role = role;
-    }
-
-    public Long getId() {
-        return id;
-    }
-
-    public String getUsername() {
-        return username;
-    }
-
-    public String getPassword() {
-        return password;
-    }
-
-    public Role getRole() {
-        return role;
     }
 }

@@ -53,9 +53,9 @@ src/main/java/com/sparta/springdeliverymini
 | 패키지 | 역할 |
 |---|---|
 | `controller` | HTTP 요청을 받아 `@Valid`로 요청 값을 검증하고, 토큰에서 꺼낸 아이디(`authentication.getName()`)와 함께 Service에 넘김. 결과를 상태 코드와 함께 응답 |
-| `service` | 비즈니스 로직 담당. 본인 데이터인지 확인, 주문 상태 변경 규칙, 금액 계산 등을 검증하고 실패하면 `ApiException`을 던짐. `@Transactional`로 트랜잭션 관리 |
+| `service` | 비즈니스 로직 담당. 본인 데이터인지 확인, 주문 상태 변경 규칙, 금액 계산 등을 검증하고 실패하면 `ApiException`을 던짐. `@Transactional`로 트랜잭션 관리. 의존성은 Lombok `@RequiredArgsConstructor`로 생성자 주입 |
 | `repository` | `JpaRepository`를 상속해 DB 조회·저장. 메서드 이름으로 쿼리 생성 (예: `findAllByUserId`, `existsByOrderId`) |
-| `entity` | DB 테이블과 1:1로 대응하는 JPA 엔티티. 상태 변경은 setter 대신 `changeStatus()`, `update()`, `delete()` 같은 의미 있는 메서드로만 가능 |
+| `entity` | DB 테이블과 1:1로 대응하는 JPA 엔티티. 상태 변경은 setter 대신 `changeStatus()`, `update()`, `delete()` 같은 의미 있는 메서드로만 가능. Lombok `@Getter`만 쓰고 `@Setter`는 쓰지 않음, 기본 생성자는 `@NoArgsConstructor(access = PROTECTED)`로 외부 생성 차단 |
 | `dto` | 요청·응답 전용 객체(`record`). 엔티티를 그대로 노출하지 않고 필요한 값만 주고받음 (예: 응답에 비밀번호 제외, 요청에 금액 제외) |
 | `config`, `jwt` | Spring Security + JWT 인증. 1차 권한 검사(역할별 URL 접근)는 `SecurityConfig`, 본인 데이터 여부 같은 세부 검사는 Service에서 처리 |
 | `exception` | 모든 에러 응답을 `{"message": "..."}` 형태로 통일 |

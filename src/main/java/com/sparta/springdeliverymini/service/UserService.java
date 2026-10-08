@@ -1,5 +1,6 @@
 package com.sparta.springdeliverymini.service;
 
+import lombok.RequiredArgsConstructor;
 import com.sparta.springdeliverymini.dto.LoginRequest;
 import com.sparta.springdeliverymini.dto.LoginResponse;
 import com.sparta.springdeliverymini.dto.SignupRequest;
@@ -15,17 +16,12 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @Transactional(readOnly = true) // 기본은 읽기 전용, 저장이 필요한 메서드만 @Transactional로 덮어씀
+@RequiredArgsConstructor // final 필드를 받는 생성자 자동 생성 (생성자 주입)
 public class UserService {
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder; // SecurityConfig에 등록한 BCryptPasswordEncoder
     private final JwtProvider jwtProvider;
-
-    public UserService(UserRepository userRepository, PasswordEncoder passwordEncoder, JwtProvider jwtProvider) {
-        this.userRepository = userRepository;
-        this.passwordEncoder = passwordEncoder;
-        this.jwtProvider = jwtProvider;
-    }
 
     @Transactional
     public UserResponse signup(SignupRequest request) {

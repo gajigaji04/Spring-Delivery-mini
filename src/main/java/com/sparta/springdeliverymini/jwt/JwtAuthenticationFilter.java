@@ -1,5 +1,6 @@
 package com.sparta.springdeliverymini.jwt;
 
+import lombok.RequiredArgsConstructor;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtException;
 import jakarta.servlet.FilterChain;
@@ -21,15 +22,12 @@ import java.util.List;
  * 토큰이 유효하면 SecurityContext에 인증 정보를 넣고, 없거나 유효하지 않으면 그대로 통과시킨다.
  * (인증이 필요한 경로라면 이후 SecurityConfig의 entry point가 401을 응답)
  */
+@RequiredArgsConstructor // final 필드를 받는 생성자 자동 생성 (생성자 주입)
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private static final String BEARER_PREFIX = "Bearer ";
 
     private final JwtProvider jwtProvider;
-
-    public JwtAuthenticationFilter(JwtProvider jwtProvider) {
-        this.jwtProvider = jwtProvider;
-    }
 
     @Override
     protected void doFilterInternal(HttpServletRequest request,
