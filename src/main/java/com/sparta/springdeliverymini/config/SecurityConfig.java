@@ -1,5 +1,6 @@
 package com.sparta.springdeliverymini.config;
 
+import lombok.RequiredArgsConstructor;
 import com.sparta.springdeliverymini.jwt.JwtAuthenticationFilter;
 import com.sparta.springdeliverymini.jwt.JwtProvider;
 import org.springframework.context.annotation.Bean;
@@ -20,13 +21,10 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 
 @Configuration
+@RequiredArgsConstructor // final 필드를 받는 생성자 자동 생성 (생성자 주입)
 public class SecurityConfig {
 
     private final JwtProvider jwtProvider;
-
-    public SecurityConfig(JwtProvider jwtProvider) {
-        this.jwtProvider = jwtProvider;
-    }
 
     @Bean
     public PasswordEncoder passwordEncoder() {

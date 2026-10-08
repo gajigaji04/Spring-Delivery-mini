@@ -1,5 +1,8 @@
 package com.sparta.springdeliverymini.entity;
 
+import lombok.AccessLevel;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
 import jakarta.persistence.*;
 import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
@@ -9,6 +12,8 @@ import java.time.LocalDateTime;
 @Entity
 @Table(name = "menus")
 @EntityListeners(AuditingEntityListener.class)
+@Getter
+@NoArgsConstructor(access = AccessLevel.PROTECTED) // JPA용 기본 생성자, 외부에서 new 금지
 public class Menu {
 
     @Id
@@ -34,42 +39,11 @@ public class Menu {
     @JoinColumn(name = "owner_id", nullable = false)
     private User owner;
 
-    protected Menu() {
-    }
-
     public Menu(String name, int price, String description, User owner) {
         this.name = name;
         this.price = price;
         this.description = description;
         this.owner = owner;
-    }
-
-    public Long getId() {
-        return id;
-    }
-
-    public String getName() {
-        return name;
-    }
-
-    public int getPrice() {
-        return price;
-    }
-
-    public String getDescription() {
-        return description;
-    }
-
-    public boolean isDeleted() {
-        return deleted;
-    }
-
-    public User getOwner() {
-        return owner;
-    }
-
-    public LocalDateTime getUpdatedAt() {
-        return updatedAt;
     }
 
     // 소프트 삭제 처리 메서드

@@ -1,5 +1,6 @@
 package com.sparta.springdeliverymini.service;
 
+import lombok.RequiredArgsConstructor;
 import com.sparta.springdeliverymini.dto.MenuCreateRequest;
 import com.sparta.springdeliverymini.dto.MenuResponse;
 import com.sparta.springdeliverymini.entity.Menu;
@@ -15,15 +16,11 @@ import java.util.List;
 
 @Service
 @Transactional(readOnly = true)
+@RequiredArgsConstructor // final 필드를 받는 생성자 자동 생성 (생성자 주입)
 public class MenuService {
 
     private final MenuRepository menuRepository;
     private final UserRepository userRepository;
-
-    public MenuService(MenuRepository menuRepository, UserRepository userRepository) {
-        this.menuRepository = menuRepository;
-        this.userRepository = userRepository;
-    }
 
     @Transactional
     public MenuResponse createMenu(MenuCreateRequest request, String username) {

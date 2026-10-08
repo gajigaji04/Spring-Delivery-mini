@@ -1,5 +1,6 @@
 package com.sparta.springdeliverymini.controller;
 
+import lombok.RequiredArgsConstructor;
 import com.sparta.springdeliverymini.dto.PaymentRequest;
 import com.sparta.springdeliverymini.dto.PaymentResponse;
 import com.sparta.springdeliverymini.service.PaymentService;
@@ -15,13 +16,10 @@ import org.springframework.web.bind.annotation.RestController;
 // @Controller는 반환값을 뷰 이름으로 해석하므로 JSON 응답을 위해 @RestController 사용
 @RestController
 @RequestMapping("/api")
+@RequiredArgsConstructor // final 필드를 받는 생성자 자동 생성 (생성자 주입)
 public class PaymentController {
 
     private final PaymentService paymentService;
-
-    public PaymentController(PaymentService paymentService) {
-        this.paymentService = paymentService;
-    }
 
     // CUSTOMER만 결제 가능
     // CUSTOMER 권한 확인은 SecurityConfig에서 토큰의 role로 처리 (OWNER → 403)
