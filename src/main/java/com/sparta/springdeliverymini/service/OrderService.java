@@ -5,6 +5,7 @@ import com.sparta.springdeliverymini.dto.OrderCreateRequest;
 import com.sparta.springdeliverymini.dto.OrderResponse;
 import com.sparta.springdeliverymini.entity.*;
 import com.sparta.springdeliverymini.exception.ApiException;
+import com.sparta.springdeliverymini.exception.InvalidOrderStatusException;
 import com.sparta.springdeliverymini.repository.MenuRepository;
 import com.sparta.springdeliverymini.repository.OrderRepository;
 import com.sparta.springdeliverymini.repository.UserRepository;
@@ -128,18 +129,10 @@ public class OrderService {
             );
         }
 
-        // 5. 주문요청 상태인지 확인
-        // 결제완료(PAYMENT_COMPLETED)된 주문 등 다른 상태라면 취소 불가 → 409
-        if (order.getStatus() != OrderStatus.ORDER_REQUEST) {
-            throw new ApiException(
-                    HttpStatus.CONFLICT,
-                    "주문요청 상태에서만 주문을 취소할 수 있습니다."
-            );
-        }
-
-        // 6. 주문 취소
+        // 5. 주문 취소
         // ORDER_REQUEST → ORDER_CANCELLED
-        order.changeStatus(OrderStatus.ORDER_CANCELLED);
+        // 결제완료된 주문 등 다른 상태라면 Order가 예외 → 409
+        order.cancel();
     }
 
     @Transactional
@@ -186,36 +179,13 @@ public class OrderService {
             );
         }
 
-        // 5. 이미 배달완료된 주문인지 확인
-        // 배달완료 이후에는 다시 수락하는 등 어떤 변경도 불가 → 409
-        if (order.getStatus() == OrderStatus.DELIVERY_COMPLETED) {
-            throw new ApiException(
-                    HttpStatus.CONFLICT,
-                    "이미 배달완료된 주문은 상태를 변경할 수 없습니다."
-            );
-        }
-
-        // 6. 허용된 상태 변경인지 확인
-        // 허용: 결제완료 → 주문수락, 주문수락 → 배달완료
-        if (order.getStatus() == OrderStatus.PAYMENT_COMPLETED
-                && newStatus == OrderStatus.ORDER_ACCEPTED) {
-
-            // PAYMENT_COMPLETED → ORDER_ACCEPTED
-            order.changeStatus(OrderStatus.ORDER_ACCEPTED);
-
-        } else if (order.getStatus() == OrderStatus.ORDER_ACCEPTED
-                && newStatus == OrderStatus.DELIVERY_COMPLETED) {
-
-            // ORDER_ACCEPTED → DELIVERY_COMPLETED
-            order.changeStatus(OrderStatus.DELIVERY_COMPLETED);
-
-        } else {
-            // 그 외 변경은 모두 거절 → 409
-            // 예) 결제 전(주문요청) 주문을 수락, 취소된 주문 변경, 단계 건너뛰기(결제완료 → 배달완료)
-            throw new ApiException(
-                    HttpStatus.CONFLICT,
-                    "허용되지 않는 주문 상태 변경입니다."
-            );
+        // 5. 요청한 상태에 맞는 전이 실행
+        // 현재 상태에서 허용되는지는 Order가 확인 (예: 결제 전 주문 수락, 배달완료 주문 변경 → 409)
+        switch (newStatus) {
+            case ORDER_ACCEPTED -> order.accept();         // PAYMENT_COMPLETED → ORDER_ACCEPTED
+            case DELIVERY_COMPLETED -> order.complete();   // ORDER_ACCEPTED → DELIVERY_COMPLETED
+            // OWNER가 요청할 수 없는 상태(주문요청·주문취소·결제완료) → 409
+            default -> throw new InvalidOrderStatusException("허용되지 않는 주문 상태 변경입니다.");
         }
     }
 }

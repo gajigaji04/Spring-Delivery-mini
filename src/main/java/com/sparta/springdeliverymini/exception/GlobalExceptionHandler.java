@@ -21,6 +21,12 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(e.getStatus()).body(Map.of("message", e.getMessage()));
     }
 
+    // Order 엔티티의 상태 전이 규칙 위반 (예: 결제 전 주문 수락, 결제완료 주문 취소) → 409
+    @ExceptionHandler(InvalidOrderStatusException.class)
+    public ResponseEntity<Map<String, String>> handleInvalidOrderStatus(InvalidOrderStatusException e) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("message", e.getMessage()));
+    }
+
     // Service에서 따로 처리하지 못한 DB 제약 조건 위반 (NOT NULL, UNIQUE, FK 등)
     // 어느 API에서든 발생할 수 있으므로 특정 상황(예: 아이디 중복)을 가정한 메시지를 쓰지 않음
     // 아이디 중복·중복 결제처럼 예상 가능한 경우는 UserService, PaymentService에서 직접 잡아 구체적인 메시지로 응답

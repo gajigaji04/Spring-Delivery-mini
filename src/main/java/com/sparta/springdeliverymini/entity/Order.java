@@ -3,6 +3,7 @@ package com.sparta.springdeliverymini.entity;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import com.sparta.springdeliverymini.exception.InvalidOrderStatusException;
 import jakarta.persistence.*;
 
 // BaseEntity 상속 → created_at(주문 시각), updated_at(상태 변경 시각) 자동 기록
@@ -62,8 +63,50 @@ public class Order extends BaseEntity {
         this.status = status;
     }
 
-    // 주문 상태 변경
-    public void changeStatus(OrderStatus status) {
-        this.status = status;
+    // 상태 전이 규칙은 아래 메서드에만 둠
+    // 어디서 호출하든 현재 상태를 확인하므로, 결제 전 주문이 배달완료되는 등의 잘못된 전이가 불가능
+    // (권한·본인 확인은 Service 책임)
+
+    // 주문 취소: ORDER_REQUEST → ORDER_CANCELLED
+    public void cancel() {
+        if (this.status != OrderStatus.ORDER_REQUEST) {
+            throw new InvalidOrderStatusException("주문요청 상태에서만 주문을 취소할 수 있습니다.");
+        }
+        this.status = OrderStatus.ORDER_CANCELLED;
+    }
+
+    // 결제 완료: ORDER_REQUEST → PAYMENT_COMPLETED
+    // 이미 결제됐거나(중복 결제) 취소된 주문은 불가
+    public void pay() {
+        if (this.status != OrderStatus.ORDER_REQUEST) {
+            throw new InvalidOrderStatusException("주문요청 상태의 주문만 결제할 수 있습니다.");
+        }
+        this.status = OrderStatus.PAYMENT_COMPLETED;
+    }
+
+    // 주문 수락: PAYMENT_COMPLETED → ORDER_ACCEPTED
+    public void accept() {
+        validateNotDelivered();
+        if (this.status != OrderStatus.PAYMENT_COMPLETED) {
+            throw new InvalidOrderStatusException("허용되지 않는 주문 상태 변경입니다.");
+        }
+        this.status = OrderStatus.ORDER_ACCEPTED;
+    }
+
+    // 배달 완료: ORDER_ACCEPTED → DELIVERY_COMPLETED
+    // 단계 건너뛰기(결제완료 → 배달완료) 불가
+    public void complete() {
+        validateNotDelivered();
+        if (this.status != OrderStatus.ORDER_ACCEPTED) {
+            throw new InvalidOrderStatusException("허용되지 않는 주문 상태 변경입니다.");
+        }
+        this.status = OrderStatus.DELIVERY_COMPLETED;
+    }
+
+    // 배달완료는 최종 상태 → 이후 어떤 변경도 불가
+    private void validateNotDelivered() {
+        if (this.status == OrderStatus.DELIVERY_COMPLETED) {
+            throw new InvalidOrderStatusException("이미 배달완료된 주문은 상태를 변경할 수 없습니다.");
+        }
     }
 }
