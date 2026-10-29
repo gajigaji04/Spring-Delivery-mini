@@ -72,14 +72,11 @@ public class PaymentService {
             );
         }
 
-        // 6. 주문요청 상태인지 확인
-        // 이미 결제완료됐거나(중복 결제) 취소된 주문 등 다른 상태라면 → 409
-        if (order.getStatus() != OrderStatus.ORDER_REQUEST) {
-            throw new ApiException(
-                    HttpStatus.CONFLICT,
-                    "주문요청 상태의 주문만 결제할 수 있습니다."
-            );
-        }
+        // 6. 주문 상태 변경
+        // ORDER_REQUEST → PAYMENT_COMPLETED (Dirty Checking으로 DB에 반영)
+        // 이미 결제완료됐거나(중복 결제) 취소된 주문 등 다른 상태라면 Order가 예외 → 409
+        // 아래 결제 저장이 실패하면 예외로 트랜잭션 전체가 롤백되므로 상태 변경도 함께 취소됨
+        order.pay();
 
         // 7. 결제 내역이 이미 있는지 한 번 더 확인 (중복 결제 방지) → 409
         if (paymentRepository.existsByOrderId(order.getId())) {
@@ -95,6 +92,8 @@ public class PaymentService {
         try {
             // 같은 주문을 동시에 결제하면 6·7번 검사를 둘 다 통과할 수 있음
             // saveAndFlush로 INSERT를 즉시 실행해 order_id unique 제약 위반을 여기서 잡아 409로 변환
+            // TODO(@ManyToOne 전환): order_id unique가 사라지면 이 catch로는 동시 결제를 막을 수 없음
+            //  → 부분 유니크 인덱스(WHERE status = 'SUCCESS') 또는 주문 행 비관적 락으로 대체
             paymentRepository.saveAndFlush(payment);
         } catch (DataIntegrityViolationException e) {
             throw new ApiException(
@@ -102,10 +101,6 @@ public class PaymentService {
                     "이미 결제된 주문입니다."
             );
         }
-
-        // 9. 주문 상태 변경
-        // ORDER_REQUEST → PAYMENT_COMPLETED (Dirty Checking으로 DB에 반영)
-        order.changeStatus(OrderStatus.PAYMENT_COMPLETED);
 
         return PaymentResponse.from(payment);
     }
