@@ -7,11 +7,12 @@ import jakarta.persistence.*;
 
 import java.time.LocalDateTime;
 
+// BaseEntity 상속 → created_at(기록 생성 시각), updated_at(기록 수정 시각) 자동 기록
 @Entity
 @Table(name = "payments")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED) // JPA용 기본 생성자, 외부에서 new 금지
-public class Payment {
+public class Payment extends BaseEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -35,6 +36,9 @@ public class Payment {
     private PaymentMethod paymentMethod;
 
     // 결제 시각
+    // createdAt과 지금은 거의 같은 값이지만 의미가 다름
+    // createdAt: DB에 기록된 시각(기술적 기록) / paidAt: 결제가 승인된 시각(업무 데이터)
+    // 이후 PG 연동 시 승인 시각을 PG 응답값으로 받으면 두 값이 달라질 수 있어 별도 필드로 유지
     @Column(nullable = false)
     private LocalDateTime paidAt;
 
