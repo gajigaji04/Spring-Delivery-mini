@@ -46,6 +46,7 @@ src/main/java/com/sparta/springdeliverymini
 ├── dto                                  # 요청(Request) / 응답(Response) 객체
 └── exception
     ├── ApiException.java                # 상태 코드를 담아 던지는 예외
+    ├── InvalidOrderStatusException.java # 허용되지 않는 주문 상태 전이 (Order 엔티티가 던짐 → 409)
     └── GlobalExceptionHandler.java      # 예외를 {"message": ...} JSON 응답으로 변환
 ```
 
@@ -54,11 +55,11 @@ src/main/java/com/sparta/springdeliverymini
 | 패키지 | 역할 |
 |---|---|
 | `controller` | HTTP 요청을 받아 `@Valid`로 요청 값을 검증하고, 토큰에서 꺼낸 아이디(`authentication.getName()`)와 함께 Service에 넘김. 결과를 상태 코드와 함께 응답 |
-| `service` | 비즈니스 로직 담당. 본인 데이터인지 확인, 주문 상태 변경 규칙, 금액 계산 등을 검증하고 실패하면 `ApiException`을 던짐. `@Transactional`로 트랜잭션 관리. 의존성은 Lombok `@RequiredArgsConstructor`로 생성자 주입 |
+| `service` | 비즈니스 로직 담당. 본인 데이터인지 확인, 금액 계산 등을 검증하고 실패하면 `ApiException`을 던짐. 주문 상태 전이는 직접 판단하지 않고 `Order`의 메서드를 호출. `@Transactional`로 트랜잭션 관리. 의존성은 Lombok `@RequiredArgsConstructor`로 생성자 주입 |
 | `repository` | `JpaRepository`를 상속해 DB 조회·저장. 메서드 이름으로 쿼리 생성 (예: `findAllByUserId`, `existsByOrderId`) |
-| `entity` | DB 테이블과 1:1로 대응하는 JPA 엔티티. 상태 변경은 setter 대신 `changeStatus()`, `update()`, `delete()` 같은 의미 있는 메서드로만 가능. Lombok `@Getter`만 쓰고 `@Setter`는 쓰지 않음, 기본 생성자는 `@NoArgsConstructor(access = PROTECTED)`로 외부 생성 차단 |
+| `entity` | DB 테이블과 1:1로 대응하는 JPA 엔티티. 상태 변경은 setter 대신 `update()`, `delete()`, `cancel()`, `pay()`, `accept()`, `complete()` 같은 의미 있는 메서드로만 가능. 주문 상태 전이 규칙은 `Order` 메서드 안에서 현재 상태를 확인해 한곳에서 관리하고, 위반 시 `InvalidOrderStatusException`을 던짐. Lombok `@Getter`만 쓰고 `@Setter`는 쓰지 않음, 기본 생성자는 `@NoArgsConstructor(access = PROTECTED)`로 외부 생성 차단 |
 | `dto` | 요청·응답 전용 객체(`record`). 엔티티를 그대로 노출하지 않고 필요한 값만 주고받음 (예: 응답에 비밀번호 제외, 요청에 금액 제외) |
-| `config`, `jwt` | Spring Security + JWT 인증. 1차 권한 검사(역할별 URL 접근)는 `SecurityConfig`, 본인 데이터 여부 같은 세부 검사는 Service에서 처리 |
+| `config`, `jwt` | Spring Security + JWT 인증. 1차 권한 검사(역할별 URL 접근)는 `SecurityConfig`, 본인 데이터 여부 같은 세부 검사는 Service에서 처리. 역할 제한이 있는 API는 모두 `SecurityConfig`에 규칙을 두고, Service에서도 토큰 발급 후 역할 변경에 대비해 한 번 더 확인 |
 | `exception` | 모든 에러 응답을 `{"message": "..."}` 형태로 통일 |
 
 ### 요청 처리 흐름
@@ -67,6 +68,7 @@ src/main/java/com/sparta/springdeliverymini
 Client ─▶ JwtAuthenticationFilter ─▶ SecurityConfig(역할 검사) ─▶ Controller ─▶ Service ─▶ Repository ─▶ DB
                                               │                                    │
                                               └─ 401 / 403                         └─ ApiException ─▶ GlobalExceptionHandler
+                                                                                      InvalidOrderStatusException(Order 엔티티) ─▶ 〃 (409)
 ```
 
 ## 4. 주요 기능
@@ -152,6 +154,15 @@ ORDER_REQUEST(주문요청) ──결제──▶ PAYMENT_COMPLETED(결제완료
        │
        └──CUSTOMER 취소──▶ ORDER_CANCELLED(주문취소)
 ```
+
+| 전이 | `Order` 메서드 | 호출 위치 |
+|---|---|---|
+| `ORDER_REQUEST → ORDER_CANCELLED` | `cancel()` | `OrderService.cancelOrder` |
+| `ORDER_REQUEST → PAYMENT_COMPLETED` | `pay()` | `PaymentService.pay` |
+| `PAYMENT_COMPLETED → ORDER_ACCEPTED` | `accept()` | `OrderService.statusOrder` |
+| `ORDER_ACCEPTED → DELIVERY_COMPLETED` | `complete()` | `OrderService.statusOrder` |
+
+- 상태를 임의 값으로 바꾸는 메서드는 없음 → 어디서 호출하든 위 표 외의 전이는 `InvalidOrderStatusException`(409)
 
 ---
 
@@ -366,7 +377,7 @@ Response `201 Created` — 결제 내역 저장 후 주문 상태를 `PAYMENT_CO
 - **메뉴는 Soft Delete**: 실제로 행을 지우면 그 메뉴를 참조하는 주문의 FK(`menu_id`)가 깨지므로, `deleted = true`로만 표시하고 조회에서 제외
 - **중복 결제 방지**: `payments.order_id`에 unique 제약을 걸어 같은 주문의 결제가 동시에 들어와도 DB에서 한 건만 저장됨
 
-- **생성·수정 시각 공통화**: `menus`, `orders`는 `BaseEntity`(@MappedSuperclass)를 상속해 `created_at`, `updated_at`을 JPA Auditing으로 자동 기록
+- **생성·수정 시각 공통화**: `users`, `menus`, `orders`, `payments` 모두 `BaseEntity`(@MappedSuperclass)를 상속해 `created_at`, `updated_at`을 JPA Auditing으로 자동 기록
 
 ### 테이블 상세
 
@@ -377,6 +388,8 @@ Response `201 Created` — 결제 내역 저장 후 주문 상태를 `PAYMENT_CO
 | username | varchar(20) | NOT NULL, UNIQUE | 로그인 아이디 |
 | password | varchar(255) | NOT NULL | BCrypt 해시값 |
 | role | varchar(255) | NOT NULL | `CUSTOMER` / `OWNER` |
+| created_at | timestamp | | 가입 시각 (BaseEntity, 이후 변경 불가) |
+| updated_at | timestamp | | 마지막 정보 수정 시각 (BaseEntity) |
 
 > `user`는 PostgreSQL 예약어라 테이블명을 `users`로 지정
 
@@ -415,6 +428,34 @@ Response `201 Created` — 결제 내역 저장 후 주문 상태를 `PAYMENT_CO
 | amount | integer | NOT NULL | 결제 금액 (주문의 `total_price`를 그대로 저장) |
 | payment_method | varchar(255) | NOT NULL | `CARD` |
 | paid_at | timestamp(6) | NOT NULL | 결제 시각 |
+| created_at | timestamp | | 기록 생성 시각 (BaseEntity, 이후 변경 불가) |
+| updated_at | timestamp | | 기록 수정 시각 (BaseEntity) |
+
+> `paid_at`과 `created_at`은 지금은 거의 같은 값이지만 의미가 다름. `created_at`은 DB에 기록된 시각(기술적 기록), `paid_at`은 결제가 승인된 시각(업무 데이터). PG 연동 시 승인 시각을 PG 응답값으로 받으면 두 값이 달라질 수 있어 별도로 유지
+
+#### 결제 연관관계: `@OneToOne` vs `@ManyToOne`
+
+현재는 `@OneToOne` + `order_id` UNIQUE로 **주문 1건당 결제 기록 1건**만 허용해, 중복 결제를 DB 제약으로 막고 있음.
+결제 실패 후 재결제, 부분 취소처럼 한 주문에 결제 기록이 여러 건 생기는 요구가 들어오면 `@ManyToOne`으로 바꿔야 함.
+
+| 구분 | `@OneToOne` + UNIQUE (현재) | `@ManyToOne` |
+|---|---|---|
+| 주문당 결제 기록 | 1건 | N건 |
+| 중복 결제 방지 | `order_id` UNIQUE 제약으로 DB가 자동 차단 | 별도 규칙 필요 (예: 성공한 결제는 1건만) |
+| 결제 실패·재시도 이력 | 저장 불가 (성공한 결제만 저장) | 실패·재시도 이력을 모두 남길 수 있음 |
+| 부분 취소·환불 | 표현하기 어려움 | 취소·환불 건을 별도 행으로 기록 가능 |
+| 주문의 결제 조회 | 1건 바로 조회 | 목록을 조회한 뒤 결제 상태로 구분 |
+
+`@ManyToOne`으로 전환할 때 할 일
+1. `Payment`에 결제 상태(예: `SUCCESS` / `FAILED` / `CANCELLED`) 추가
+2. `@OneToOne` → `@ManyToOne`, `order_id`의 UNIQUE 제거
+   - `ddl-auto: update`는 기존 제약을 지우지 않으므로 DB에서 직접 삭제해야 함
+3. 중복 결제 방지 재설계 — 둘 중 하나
+   - PostgreSQL 부분 유니크 인덱스: `CREATE UNIQUE INDEX ON payments(order_id) WHERE status = 'SUCCESS'`
+   - 결제 시 주문 행에 비관적 락(`@Lock(PESSIMISTIC_WRITE)`)을 걸어 동시 결제를 순서대로 처리
+4. `PaymentRepository.existsByOrderId` → 성공한 결제만 확인하도록 변경 (예: `existsByOrderIdAndStatus`)
+
+> 코드에서 바뀌어야 할 위치는 `// TODO(@ManyToOne 전환)` 주석으로 표시해 둠
 
 ## 7. 질문이나 피드백 받고 싶은 것
 ### 질문 및 피드백 요청 사항

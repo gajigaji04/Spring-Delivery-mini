@@ -92,6 +92,8 @@ public class PaymentService {
         try {
             // 같은 주문을 동시에 결제하면 6·7번 검사를 둘 다 통과할 수 있음
             // saveAndFlush로 INSERT를 즉시 실행해 order_id unique 제약 위반을 여기서 잡아 409로 변환
+            // TODO(@ManyToOne 전환): order_id unique가 사라지면 이 catch로는 동시 결제를 막을 수 없음
+            //  → 부분 유니크 인덱스(WHERE status = 'SUCCESS') 또는 주문 행 비관적 락으로 대체
             paymentRepository.saveAndFlush(payment);
         } catch (DataIntegrityViolationException e) {
             throw new ApiException(
