@@ -1,10 +1,16 @@
 package com.sparta.springdeliverymini.entity;
 
+import lombok.AccessLevel;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
 import jakarta.persistence.*;
 
+// BaseEntity 상속 → created_at(주문 시각), updated_at(상태 변경 시각) 자동 기록
 @Entity
 @Table(name = "orders")
-public class Order {
+@Getter
+@NoArgsConstructor(access = AccessLevel.PROTECTED) // JPA용 기본 생성자, 외부에서 new 금지
+public class Order extends BaseEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -40,9 +46,6 @@ public class Order {
     @Column(nullable = false)
     private OrderStatus status;
 
-    protected Order() {
-    }
-
     public Order(
             Menu menu,
             User user,
@@ -57,34 +60,6 @@ public class Order {
         this.totalPrice = totalPrice;
         this.deliveryAddress = deliveryAddress;
         this.status = status;
-    }
-
-    public Long getId() {
-        return id;
-    }
-
-    public Menu getMenu() {
-        return menu;
-    }
-
-    public User getUser() {
-        return user;
-    }
-
-    public int getQuantity() {
-        return quantity;
-    }
-
-    public int getTotalPrice() {
-        return totalPrice;
-    }
-
-    public String getDeliveryAddress() {
-        return deliveryAddress;
-    }
-
-    public OrderStatus getStatus() {
-        return status;
     }
 
     // 주문 상태 변경

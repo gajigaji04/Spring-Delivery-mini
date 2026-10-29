@@ -1,5 +1,6 @@
 package com.sparta.springdeliverymini.service;
 
+import lombok.RequiredArgsConstructor;
 import com.sparta.springdeliverymini.dto.LoginRequest;
 import com.sparta.springdeliverymini.dto.LoginResponse;
 import com.sparta.springdeliverymini.dto.SignupRequest;
@@ -8,6 +9,7 @@ import com.sparta.springdeliverymini.entity.User;
 import com.sparta.springdeliverymini.exception.ApiException;
 import com.sparta.springdeliverymini.jwt.JwtProvider;
 import com.sparta.springdeliverymini.repository.UserRepository;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -15,25 +17,18 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @Transactional(readOnly = true) // 기본은 읽기 전용, 저장이 필요한 메서드만 @Transactional로 덮어씀
+@RequiredArgsConstructor // final 필드를 받는 생성자 자동 생성 (생성자 주입)
 public class UserService {
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder; // SecurityConfig에 등록한 BCryptPasswordEncoder
     private final JwtProvider jwtProvider;
 
-    public UserService(UserRepository userRepository, PasswordEncoder passwordEncoder, JwtProvider jwtProvider) {
-        this.userRepository = userRepository;
-        this.passwordEncoder = passwordEncoder;
-        this.jwtProvider = jwtProvider;
-    }
-
     @Transactional
     public UserResponse signup(SignupRequest request) {
 
         // 1. 아이디 중복 확인
         // 이미 같은 아이디가 있으면 → 409
-        // 동시에 같은 아이디로 가입해 이 검사를 둘 다 통과해도
-        // username unique 제약 위반 → GlobalExceptionHandler에서 409로 처리
         if (userRepository.existsByUsername(request.username())) {
             throw new ApiException(HttpStatus.CONFLICT, "이미 사용 중인 아이디입니다.");
         }
@@ -47,9 +42,18 @@ public class UserService {
         // role(CUSTOMER/OWNER)은 가입 시 요청으로 받은 값 사용
         User user = new User(request.username(), encodedPassword, request.role());
 
-        // 4. DB에 저장하고 응답 DTO로 변환
+        // 4. DB에 저장
+        // 동시에 같은 아이디로 가입하면 1번 검사를 둘 다 통과할 수 있음
+        // saveAndFlush로 INSERT를 즉시 실행해 username unique 제약 위반을 여기서 잡아 409로 변환
+        try {
+            userRepository.saveAndFlush(user);
+        } catch (DataIntegrityViolationException e) {
+            throw new ApiException(HttpStatus.CONFLICT, "이미 사용 중인 아이디입니다.");
+        }
+
+        // 5. 응답 DTO로 변환
         // 응답에는 비밀번호를 포함하지 않음 (id, username, role만)
-        return UserResponse.from(userRepository.save(user));
+        return UserResponse.from(user);
     }
 
     public LoginResponse login(LoginRequest request) {

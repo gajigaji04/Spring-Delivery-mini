@@ -1,7 +1,7 @@
 # Spring Delivery Mini
 
 ## 1. 프로젝트 소개
-- 단기 심화 온보딩 주차 과제로, Spring Boot · JPA를 이용해 구현한 미니 배달 서비스
+- 스파르타 단기 심화 온보딩 주차 과제로, Spring Boot · JPA를 이용해 구현한 미니 배달 서비스
 
 ## 2. 프로젝트에서 요구/사용한 기술 스택
 | 구분 | 기술 |
@@ -38,6 +38,7 @@ src/main/java/com/sparta/springdeliverymini
 │   ├── OrderRepository.java
 │   └── PaymentRepository.java
 ├── entity
+│   ├── BaseEntity.java                  # 생성·수정 시각 자동 기록 (@MappedSuperclass)
 │   ├── User.java / Role.java            # 회원, 역할(CUSTOMER / OWNER)
 │   ├── Menu.java                        # 메뉴 (Soft Delete)
 │   ├── Order.java / OrderStatus.java    # 주문, 주문 상태
@@ -53,9 +54,9 @@ src/main/java/com/sparta/springdeliverymini
 | 패키지 | 역할 |
 |---|---|
 | `controller` | HTTP 요청을 받아 `@Valid`로 요청 값을 검증하고, 토큰에서 꺼낸 아이디(`authentication.getName()`)와 함께 Service에 넘김. 결과를 상태 코드와 함께 응답 |
-| `service` | 비즈니스 로직 담당. 본인 데이터인지 확인, 주문 상태 변경 규칙, 금액 계산 등을 검증하고 실패하면 `ApiException`을 던짐. `@Transactional`로 트랜잭션 관리 |
+| `service` | 비즈니스 로직 담당. 본인 데이터인지 확인, 주문 상태 변경 규칙, 금액 계산 등을 검증하고 실패하면 `ApiException`을 던짐. `@Transactional`로 트랜잭션 관리. 의존성은 Lombok `@RequiredArgsConstructor`로 생성자 주입 |
 | `repository` | `JpaRepository`를 상속해 DB 조회·저장. 메서드 이름으로 쿼리 생성 (예: `findAllByUserId`, `existsByOrderId`) |
-| `entity` | DB 테이블과 1:1로 대응하는 JPA 엔티티. 상태 변경은 setter 대신 `changeStatus()`, `update()`, `delete()` 같은 의미 있는 메서드로만 가능 |
+| `entity` | DB 테이블과 1:1로 대응하는 JPA 엔티티. 상태 변경은 setter 대신 `changeStatus()`, `update()`, `delete()` 같은 의미 있는 메서드로만 가능. Lombok `@Getter`만 쓰고 `@Setter`는 쓰지 않음, 기본 생성자는 `@NoArgsConstructor(access = PROTECTED)`로 외부 생성 차단 |
 | `dto` | 요청·응답 전용 객체(`record`). 엔티티를 그대로 노출하지 않고 필요한 값만 주고받음 (예: 응답에 비밀번호 제외, 요청에 금액 제외) |
 | `config`, `jwt` | Spring Security + JWT 인증. 1차 권한 검사(역할별 URL 접근)는 `SecurityConfig`, 본인 데이터 여부 같은 세부 검사는 Service에서 처리 |
 | `exception` | 모든 에러 응답을 `{"message": "..."}` 형태로 통일 |
@@ -206,7 +207,8 @@ Request
 
 Response `201 Created`
 ```json
-{ "id": 1, "name": "후라이드 치킨", "price": 18000, "description": "바삭한 치킨", "updatedAt": "2026-10-08T14:00:00" }
+{ "id": 1, "name": "후라이드 치킨", "price": 18000, "description": "바삭한 치킨",
+  "createdAt": "2026-10-08T14:00:00", "updatedAt": "2026-10-08T14:00:00" }
 ```
 
 | 코드 | 상황 |
@@ -219,7 +221,8 @@ Response `201 Created`
 Response `200 OK` — 삭제되지 않은 메뉴만 반환
 ```json
 [
-  { "id": 1, "name": "후라이드 치킨", "price": 18000, "description": "바삭한 치킨", "updatedAt": "2026-10-08T14:00:00" }
+  { "id": 1, "name": "후라이드 치킨", "price": 18000, "description": "바삭한 치킨",
+  "createdAt": "2026-10-08T14:00:00", "updatedAt": "2026-10-08T14:00:00" }
 ]
 ```
 
@@ -268,7 +271,8 @@ Response `201 Created`
 {
   "id": 1, "menuId": 1, "menuName": "후라이드 치킨",
   "quantity": 2, "totalPrice": 36000,
-  "deliveryAddress": "서울시 강남구 ...", "status": "ORDER_REQUEST"
+  "deliveryAddress": "서울시 강남구 ...", "status": "ORDER_REQUEST",
+  "createdAt": "2026-10-08T14:03:00", "updatedAt": "2026-10-08T14:03:00"
 }
 ```
 
@@ -362,6 +366,8 @@ Response `201 Created` — 결제 내역 저장 후 주문 상태를 `PAYMENT_CO
 - **메뉴는 Soft Delete**: 실제로 행을 지우면 그 메뉴를 참조하는 주문의 FK(`menu_id`)가 깨지므로, `deleted = true`로만 표시하고 조회에서 제외
 - **중복 결제 방지**: `payments.order_id`에 unique 제약을 걸어 같은 주문의 결제가 동시에 들어와도 DB에서 한 건만 저장됨
 
+- **생성·수정 시각 공통화**: `menus`, `orders`는 `BaseEntity`(@MappedSuperclass)를 상속해 `created_at`, `updated_at`을 JPA Auditing으로 자동 기록
+
 ### 테이블 상세
 
 #### users — 회원
@@ -383,7 +389,8 @@ Response `201 Created` — 결제 내역 저장 후 주문 상태를 `PAYMENT_CO
 | price | integer | NOT NULL | 가격 |
 | description | varchar(255) | | 설명 (선택) |
 | deleted | boolean | | 삭제 여부 (Soft Delete) |
-| updated_at | timestamp | NOT NULL | 마지막 수정 시각 (JPA Auditing 자동 기록) |
+| created_at | timestamp | | 등록 시각 (BaseEntity, 이후 변경 불가) |
+| updated_at | timestamp | NOT NULL | 마지막 수정 시각 (BaseEntity) |
 
 #### orders — 주문
 | 컬럼 | 타입 | 제약 | 설명 |
@@ -395,6 +402,8 @@ Response `201 Created` — 결제 내역 저장 후 주문 상태를 `PAYMENT_CO
 | total_price | integer | NOT NULL | 주문 당시 총액 (메뉴 가격 × 수량, 서버 계산) |
 | delivery_address | varchar(255) | NOT NULL | 배송 주소 |
 | status | varchar(255) | NOT NULL | `ORDER_REQUEST` / `ORDER_CANCELLED` / `PAYMENT_COMPLETED` / `ORDER_ACCEPTED` / `DELIVERY_COMPLETED` |
+| created_at | timestamp | | 주문 시각 (BaseEntity, 이후 변경 불가) |
+| updated_at | timestamp | | 마지막 상태 변경 시각 (BaseEntity) |
 
 > 메뉴 가격이 나중에 바뀌어도 주문 금액이 변하지 않도록 `total_price`를 주문 시점에 따로 저장
 

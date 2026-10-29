@@ -1,5 +1,6 @@
 package com.sparta.springdeliverymini.service;
 
+import lombok.RequiredArgsConstructor;
 import com.sparta.springdeliverymini.dto.OrderCreateRequest;
 import com.sparta.springdeliverymini.dto.OrderResponse;
 import com.sparta.springdeliverymini.entity.*;
@@ -16,17 +17,12 @@ import java.util.List;
 
 @Service
 @Transactional(readOnly = true)
+@RequiredArgsConstructor // final 필드를 받는 생성자 자동 생성 (생성자 주입)
 public class OrderService {
 
     private final OrderRepository orderRepository;
     private final MenuRepository menuRepository;
     private final UserRepository userRepository;
-
-    public OrderService(OrderRepository orderRepository, MenuRepository menuRepository, UserRepository userRepository) {
-        this.orderRepository = orderRepository;
-        this.menuRepository = menuRepository;
-        this.userRepository = userRepository;
-    }
 
     public List<OrderResponse> getOrders(String username) {
         // 1. 현재 로그인한 사용자 찾기

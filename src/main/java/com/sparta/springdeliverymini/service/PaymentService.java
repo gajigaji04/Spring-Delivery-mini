@@ -1,5 +1,6 @@
 package com.sparta.springdeliverymini.service;
 
+import lombok.RequiredArgsConstructor;
 import com.sparta.springdeliverymini.dto.PaymentRequest;
 import com.sparta.springdeliverymini.dto.PaymentResponse;
 import com.sparta.springdeliverymini.entity.*;
@@ -14,17 +15,12 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @Transactional(readOnly = true)
+@RequiredArgsConstructor // final 필드를 받는 생성자 자동 생성 (생성자 주입)
 public class PaymentService {
 
     private final PaymentRepository paymentRepository;
     private final OrderRepository orderRepository;
     private final UserRepository userRepository;
-
-    public PaymentService(PaymentRepository paymentRepository, OrderRepository orderRepository, UserRepository userRepository) {
-        this.paymentRepository = paymentRepository;
-        this.orderRepository = orderRepository;
-        this.userRepository = userRepository;
-    }
 
     @Transactional
     public PaymentResponse pay(PaymentRequest request, String username) {

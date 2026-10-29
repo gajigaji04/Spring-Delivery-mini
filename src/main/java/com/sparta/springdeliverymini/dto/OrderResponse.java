@@ -3,6 +3,8 @@ package com.sparta.springdeliverymini.dto;
 import com.sparta.springdeliverymini.entity.Order;
 import com.sparta.springdeliverymini.entity.OrderStatus;
 
+import java.time.LocalDateTime;
+
 public record OrderResponse(
         Long id,
         Long menuId,
@@ -10,7 +12,9 @@ public record OrderResponse(
         int quantity,
         int totalPrice,
         String deliveryAddress,
-        OrderStatus status) {
+        OrderStatus status,
+        LocalDateTime createdAt,  // 주문 시각 (BaseEntity)
+        LocalDateTime updatedAt) { // 마지막 상태 변경 시각 (BaseEntity)
 
     public static OrderResponse from(Order order) {
         return new OrderResponse(
@@ -20,7 +24,9 @@ public record OrderResponse(
                 order.getQuantity(),
                 order.getTotalPrice(),
                 order.getDeliveryAddress(),
-                order.getStatus()
+                order.getStatus(),
+                order.getCreatedAt(),
+                order.getUpdatedAt()
         );
     }
 }

@@ -1,5 +1,6 @@
 package com.sparta.springdeliverymini.service;
 
+import lombok.RequiredArgsConstructor;
 import com.sparta.springdeliverymini.dto.MenuCreateRequest;
 import com.sparta.springdeliverymini.dto.MenuResponse;
 import com.sparta.springdeliverymini.entity.Menu;
@@ -15,15 +16,11 @@ import java.util.List;
 
 @Service
 @Transactional(readOnly = true)
+@RequiredArgsConstructor // final 필드를 받는 생성자 자동 생성 (생성자 주입)
 public class MenuService {
 
     private final MenuRepository menuRepository;
     private final UserRepository userRepository;
-
-    public MenuService(MenuRepository menuRepository, UserRepository userRepository) {
-        this.menuRepository = menuRepository;
-        this.userRepository = userRepository;
-    }
 
     @Transactional
     public MenuResponse createMenu(MenuCreateRequest request, String username) {
@@ -117,8 +114,13 @@ public class MenuService {
                 request.description()
         );
 
-        // 5. 변경된 Entity를 DTO로 변환
-        // @Transactional 안에서 변경된 값은 Dirty Checking으로 DB에 반영
+        // 5. 변경 내용을 DB에 즉시 반영
+        // Dirty Checking의 UPDATE는 원래 트랜잭션 커밋 시점에 실행되는데,
+        // updatedAt(@LastModifiedDate)도 그 UPDATE 직전에 채워짐
+        // → flush 없이 응답을 만들면 updatedAt이 수정 전 시각으로 나가므로 먼저 flush
+        menuRepository.flush();
+
+        // 6. 변경된 Entity를 DTO로 변환
         return MenuResponse.from(menu);
     }
 

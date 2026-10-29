@@ -1,5 +1,6 @@
 package com.sparta.springdeliverymini.controller;
 
+import lombok.RequiredArgsConstructor;
 import com.sparta.springdeliverymini.dto.LoginRequest;
 import com.sparta.springdeliverymini.dto.LoginResponse;
 import com.sparta.springdeliverymini.dto.SignupRequest;
@@ -19,13 +20,10 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/users")
+@RequiredArgsConstructor // final 필드를 받는 생성자 자동 생성 (생성자 주입)
 public class UserController {
 
     private final UserService userService;
-
-    public UserController(UserService userService) {
-        this.userService = userService;
-    }
 
     // 회원가입 — 토큰 없이 호출 가능 (SecurityConfig에서 permitAll)
     // @Valid: SignupRequest의 검증 조건(아이디 4~20자 등)을 어기면 → 400

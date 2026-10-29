@@ -1,11 +1,16 @@
 package com.sparta.springdeliverymini.entity;
 
+import lombok.AccessLevel;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
 import jakarta.persistence.*;
 
 import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "payments")
+@Getter
+@NoArgsConstructor(access = AccessLevel.PROTECTED) // JPA용 기본 생성자, 외부에서 new 금지
 public class Payment {
 
     @Id
@@ -33,33 +38,10 @@ public class Payment {
     @Column(nullable = false)
     private LocalDateTime paidAt;
 
-    protected Payment() {
-    }
-
     public Payment(Order order, int amount, PaymentMethod paymentMethod) {
         this.order = order;
         this.amount = amount;
         this.paymentMethod = paymentMethod;
         this.paidAt = LocalDateTime.now();
-    }
-
-    public Long getId() {
-        return id;
-    }
-
-    public Order getOrder() {
-        return order;
-    }
-
-    public int getAmount() {
-        return amount;
-    }
-
-    public PaymentMethod getPaymentMethod() {
-        return paymentMethod;
-    }
-
-    public LocalDateTime getPaidAt() {
-        return paidAt;
     }
 }
