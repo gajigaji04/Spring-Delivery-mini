@@ -5,11 +5,12 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import jakarta.persistence.*;
 
+// BaseEntity 상속 → created_at(가입 시각), updated_at(정보 수정 시각) 자동 기록
 @Entity
 @Table(name = "users") // user는 PostgreSQL 예약어라 테이블명을 users로 지정
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED) // JPA용 기본 생성자, 외부에서 new 금지
-public class User {
+public class User extends BaseEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
