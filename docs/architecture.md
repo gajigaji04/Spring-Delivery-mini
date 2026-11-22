@@ -645,7 +645,7 @@ Refresh Token이 쿠키라 다른 사이트가 재발급·로그아웃을 위조
 ### 한계 · 후속
 - 소셜로 먼저 가입한 회원과 기존 아이디 회원은 합치지 않음 → 기존 회원에 연결하려 하면 `SOCIAL_ACCOUNT_ALREADY_LINKED`
 - 소셜 전용 회원은 비밀번호 설정 기능이 없음 (마지막 소셜 계정 해제 불가로 잠금만 막음)
-- `{baseUrl}` 콜백 주소는 요청 Host 기준 → 프록시 뒤 배포 시 `server.forward-headers-strategy` 필요
+- 콜백 주소는 기본 `{baseUrl}`(요청 Host 기준). 프록시 뒤 배포는 `social.redirect-base-url`(`SOCIAL_REDIRECT_BASE_URL`)로 앞부분 고정 — Vercel 프록시 배포는 프론트 주소 (#86, [운영](operations.md) 8장)
 - 프론트·API가 다른 사이트면 Refresh 쿠키 `SameSite=None` 필요(인증 장과 같음), 연결 쿠키도 같은 설정을 따름
 - 공급자 장애 시 소셜 로그인만 실패(`OAUTH2_FAILED`), 아이디 로그인·재발급은 영향 없음
 
