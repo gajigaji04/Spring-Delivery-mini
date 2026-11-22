@@ -1,7 +1,12 @@
 import { tokenStore } from '../auth/tokenStore';
 import type { ApiErrorBody, TokenResponse } from './types';
 
+// 빈 값('')이면 같은 출처(/api/...)로 호출 — Vercel rewrite가 API를 프록시하는 배포에서 Refresh 쿠키를
+// 다른 사이트(third-party) 쿠키가 아닌 같은 사이트 쿠키로 받기 위해 (docs/operations.md 8장)
 const BASE_URL: string = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8090';
+// 사장님 실시간 주문 알림(SSE)만 다른 주소로 보낼 때 (선택) — 프록시가 스트림을 끊거나 모아 보내면 API 주소로 직접 연결.
+// SSE는 쿠키 없이 Bearer만 쓰므로 다른 출처여도 CORS 허용만 있으면 됨
+export const STREAM_BASE_URL: string = import.meta.env.VITE_STREAM_BASE_URL || BASE_URL;
 
 export class ApiError extends Error {
   readonly status: number;
@@ -40,8 +45,9 @@ export interface PageResult<T> {
   nextAfterId: number | null;
 }
 
-export function buildUrl(path: string, query?: RequestOptions['query']): string {
-  const url = new URL(BASE_URL + path);
+export function buildUrl(path: string, query?: RequestOptions['query'], base: string = BASE_URL): string {
+  // 상대 주소(같은 출처)도 처리하도록 현재 페이지 주소를 기준으로 둠 (테스트 등 location이 없으면 절대 주소만)
+  const url = new URL(base + path, globalThis.location?.origin);
   if (query) {
     for (const [k, v] of Object.entries(query)) {
       // 선택 조건은 값이 있을 때만 보냄 — 빈 문자열을 보내면 서버에서 형식 오류(400)

@@ -240,8 +240,10 @@ auth:
 # 소셜 로그인 (V22, config.SocialLoginProperties) — 키는 .env에만. 공급자별로 id·secret이 둘 다 비면 그 공급자는 꺼짐
 #   공급자 콘솔에 등록할 Redirect URI: {API 주소}/login/oauth2/code/kakao · /login/oauth2/code/google
 #   frontend-callback-url: 로그인 결과(?result=·?error=)를 받는 프론트 화면
+#   redirect-base-url: 콜백 주소 앞부분 고정(선택). 비우면 요청 Host 기준. Vercel 프록시 배포는 프론트 주소 (docs/operations.md 8장)
 social:
   frontend-callback-url: ${SOCIAL_FRONTEND_CALLBACK_URL:http://localhost:5173/oauth/callback}
+  redirect-base-url: ${SOCIAL_REDIRECT_BASE_URL:}
   providers:
     kakao:
       client-id: ${KAKAO_CLIENT_ID:}

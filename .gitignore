@@ -37,3 +37,6 @@ out/
 .vscode/
 
 .env
+
+# 운영 배포 환경변수 (#86)
+deploy/.env.prod

@@ -1,4 +1,4 @@
-# 운영 프로필 (#54) · CORS (#61)
+# 운영 프로필 (#54) · CORS (#61) · 배포 (#86)
 
 [← README](../README.md)
 
@@ -128,7 +128,7 @@ Refresh Token 쿠키 (V15) — `auth.refresh-token.*` (`config.RefreshTokenPrope
 |---|---|---|
 | `REFRESH_TOKEN_COOKIE_SECURE` | `true` | HTTPS에서만 전송. Chrome·Firefox는 `http://localhost`도 보안 출처로 취급해 로컬 개발에서도 그대로 동작 (Safari 등에서 로컬 쿠키가 저장되지 않으면 local에서만 `false`) |
 | `REFRESH_TOKEN_COOKIE_SAME_SITE` | `Strict` | 프론트·API가 같은 사이트(등록 도메인 같음, 포트 무관 — `localhost:5173` ↔ `localhost:8090`, `app.example.com` ↔ `api.example.com`)면 `Strict`. 다른 사이트면 `None`(+ `Secure` 필수, 아니면 기동 실패) — 이때 CSRF 방어는 CORS 허용 출처 검사에만 의존 |
-- 수명(`ttl` 14일, 로그인 후 절대 만료 `absolute-ttl` 30일 — V16)과 Access 수명(`jwt.expiration-ms` 15분)은 application.yml 값. 프론트엔드 배포 구조가 정해지면 `SameSite` 값을 확정
+- 수명(`ttl` 14일, 로그인 후 절대 만료 `absolute-ttl` 30일 — V16)과 Access 수명(`jwt.expiration-ms` 15분)은 application.yml 값. 배포(#86)는 Vercel rewrite로 API를 같은 출처로 프록시하므로 기본값 `Strict` 그대로 (8장)
 
 변경 방법
 - 출처 추가: 배포 환경의 `CORS_ALLOWED_ORIGINS`에 쉼표로 추가 후 재시작 (예: `https://app.example.com,https://admin.example.com`)
@@ -137,3 +137,98 @@ Refresh Token 쿠키 (V15) — `auth.refresh-token.*` (`config.RefreshTokenPrope
 한계 · 후속
 - 거부 응답 본문은 Spring 기본 문자열이라 공통 오류 형식(`ApiErrorResponse`)이 아님 — 브라우저 JS는 읽을 수 없어 영향 없음
 - 실제 브라우저 확인은 프론트엔드 연동 때 (이번 수동 확인은 curl로 헤더를 흉내 냄 — [로컬 확인 가이드](local-verification.md) 4장)
+
+## 8. 배포 — Oracle Cloud Always Free VM + Vercel (#86)
+
+포트폴리오 공개용 무료 배포. 백엔드는 VM 1대에서 compose로, 프론트는 Vercel 정적 호스팅.
+고른 이유·다른 안(Render·Koyeb + Neon + Upstash)과 비교는 [로드맵](roadmap.md) 배포 장.
+
+```
+브라우저 ── https://xxx.vercel.app ──► Vercel (정적 파일)
+              │  /api/* · /oauth2/* · /login/oauth2/*  (vercel.json rewrite = 프록시)
+              ▼
+         https://API_DOMAIN ──► Caddy(80·443, 자동 HTTPS) ──► app:8080 ──► db · redis · kafka (compose 내부망)
+              ▲
+              └ (선택) 사장님 SSE만 직접 연결: VITE_STREAM_BASE_URL
+```
+
+파일: `deploy/compose.prod.yml`(prod 프로필 앱 + db·redis·kafka + Caddy, 선택 monitoring), `deploy/Caddyfile`, `deploy/.env.prod.example`, `frontend/vercel.json`, `frontend/.env.production`
+
+### 8-1. 설계 결정
+
+| 항목 | 결정 | 이유 |
+|---|---|---|
+| API 호출 경로 | 프론트는 같은 출처 `/api`(`VITE_API_BASE_URL` 빈 값) → Vercel rewrite가 API 도메인으로 프록시 | `*.vercel.app`과 API 도메인이 다르면 Refresh 쿠키가 다른 사이트(third-party) 쿠키가 되어 Safari 등에서 차단 → 새로고침마다 로그아웃. 같은 출처면 기존 `SameSite=Strict` + `Secure` 그대로 동작 (SameSite=None 불필요) |
+| 소셜 로그인 경로 | `/oauth2/*`·`/login/oauth2/*`도 Vercel 경유, 콜백 주소는 `SOCIAL_REDIRECT_BASE_URL`=프론트 주소로 고정 | 시작 기록 쿠키와 성공 후 Refresh 쿠키가 프론트 도메인에 심겨야 함. 프록시를 두 번 거치면 앱이 보는 Host가 API 도메인이라 `{baseUrl}`로는 콜백 주소가 틀어짐 → forward 헤더 신뢰 설정 대신 설정값으로 고정 (`SocialLoginProperties.redirectBaseUrl`) |
+| SSE | 기본은 Vercel 경유, 끊기거나 늦으면 `VITE_STREAM_BASE_URL=https://API_DOMAIN` | 외부 rewrite의 스트리밍·연결 시간 제한은 실측 전. SSE는 Bearer만 쓰므로 직접 연결해도 CORS 허용(`CORS_ALLOWED_ORIGINS`=프론트 주소)만 있으면 됨. 끊겨도 프론트가 재연결·폴링으로 대체(#76) |
+| HTTPS | Caddy 자동 인증서(Let's Encrypt). 도메인이 없으면 `<공인IP 대시>.sslip.io` | Vercel rewrite 대상과 Secure 쿠키에 HTTPS 필요. 인증서는 `caddy-data` 볼륨에 보관(재발급 횟수 제한) |
+| 공개 포트 | 80·443(Caddy)만. 관리 포트 8081·DB·Redis·Kafka·Grafana는 외부 비공개 | prod 프로필 노출 정책(3장)과 같음. Grafana는 SSH 터널 |
+| 결제 | 토스 `test_` 키 또는 키 없이 모의 결제. 가짜 PG(`TOSS_MODE=fake`)는 쓰지 않음 | `ProdProfileGuard`가 prod에서 가짜 PG를 막음(승인 없는 결제 기록 방지) — 데모를 위해 가드를 풀지 않음 |
+| 메모리 | 앱 힙 `-Xmx1g`, Kafka 힙 `-Xmx512m` | 무료 VM(ARM) 한 대에 전부 올리므로 상한을 고정 |
+
+### 8-2. VM 준비 (사용자)
+
+1. Oracle Cloud 가입(카드 인증) → Compute 인스턴스 생성: Ubuntu 24.04, Shape `VM.Standard.A1.Flex`(Ampere ARM, Always Free 한도 안), 공인 IP, SSH 키
+   - 리전 용량 부족(`Out of capacity`)이면 다른 가용 도메인·시간대에 재시도
+   - Always Free 한도는 바뀔 수 있으니 생성 화면의 "Always Free-eligible" 표시로 확인
+2. VCN 보안 목록(Security List) Ingress에 TCP 80·443 추가 (소스 `0.0.0.0/0`)
+3. **Oracle Ubuntu 이미지는 OS 방화벽(iptables)이 22번만 열어 둠** → 보안 목록만 열면 접속이 안 됨
+   ```bash
+   sudo iptables -I INPUT 6 -m state --state NEW -p tcp --dport 80 -j ACCEPT
+   sudo iptables -I INPUT 6 -m state --state NEW -p tcp --dport 443 -j ACCEPT
+   sudo netfilter-persistent save
+   ```
+4. Docker 설치: `curl -fsSL https://get.docker.com | sh` → `sudo usermod -aG docker $USER` 후 재접속
+5. 유휴 회수 주의: Always Free 인스턴스는 일정 기간 CPU·네트워크 사용이 매우 낮으면 회수될 수 있음 (조건은 Oracle 문서 확인)
+
+### 8-3. 백엔드 실행 (VM)
+
+```bash
+git clone <저장소 주소> && cd Spring-Delivery-mini
+cp deploy/.env.prod.example deploy/.env.prod   # 값 입력 (API_DOMAIN, FRONTEND_ORIGIN, DB_PASSWORD, JWT_SECRET 등)
+docker compose -f deploy/compose.prod.yml --env-file deploy/.env.prod up -d --build
+docker compose -f deploy/compose.prod.yml --env-file deploy/.env.prod logs -f app caddy
+```
+- 첫 빌드는 ARM VM에서 Gradle이 돌아 수 분 걸림. 빈 DB라 Flyway가 V1~최신을 적용(prod는 `baseline-on-migrate: false` — 빈 DB는 영향 없음)
+- 필수 값이 비면 compose(`:?`)나 `ProdProfileGuard`가 빠진 항목을 출력하고 멈춤
+- 확인: `curl -i https://$API_DOMAIN/api/stores` → 200, 인증서 발급 로그는 `logs caddy`
+- 갱신 배포: `git pull` 후 같은 `up -d --build` (앱만 재생성, graceful shutdown)
+- 모니터링: `--profile monitoring` 추가 + `GRAFANA_ADMIN_PASSWORD`, 접속은 `ssh -L 3000:localhost:3000 ubuntu@<VM IP>` → http://localhost:3000
+- DB 백업(선택): `docker compose -f deploy/compose.prod.yml exec -T db pg_dump -U $DB_USERNAME delivery > backup.sql`
+
+### 8-4. 프론트 배포 (Vercel, 사용자)
+
+1. `frontend/vercel.json`의 `API_DOMAIN`(3곳)을 실제 API 도메인으로 바꿔 커밋 — rewrite 대상은 정적 설정이라 환경변수를 못 씀
+2. Vercel에서 저장소 가져오기 → Root Directory `frontend`, Framework `Vite`(빌드 `npm run build`, 출력 `dist`)
+3. 환경변수(선택): `VITE_STREAM_BASE_URL`(SSE 직접 연결 시), `VITE_DEMO_ACCOUNTS`(공개 데모 계정 버튼 — CUSTOMER·OWNER만, **ADMIN은 넣지 않음**: 빌드 결과에 그대로 보임)
+   - `VITE_API_BASE_URL`은 `frontend/.env.production`이 빈 값(같은 출처)으로 정함
+4. 배포 주소(`https://xxx.vercel.app`)를 VM의 `FRONTEND_ORIGIN`에 넣고 앱 재생성
+5. 직접 접속·새로고침(`/owner/orders` 등)은 마지막 rewrite가 `index.html`로 보냄 (정적 파일이 먼저 매칭됨)
+
+### 8-5. 소셜 로그인 콘솔 (사용자)
+
+- Redirect URI: `{FRONTEND_ORIGIN}/login/oauth2/code/kakao`, `{FRONTEND_ORIGIN}/login/oauth2/code/google` (API 도메인이 아님 — 8-1)
+- 카카오: 플랫폼 Web 사이트 도메인에 Vercel 주소 추가
+- 구글: OAuth 동의 화면이 "테스트" 상태면 등록한 테스트 사용자만 로그인 가능 → 공개 데모는 "프로덕션"으로 게시(이메일·프로필 범위)
+
+### 8-6. 초기 데이터
+
+prod DB는 빈 상태. 데모용 계정은 화면(API)으로 만든다
+1. 관리자: 회원가입(CUSTOMER) 후 DB에서 승격 — `docker compose -f deploy/compose.prod.yml exec db psql -U $DB_USERNAME delivery -c "UPDATE users SET role='ADMIN' WHERE username='<아이디>'"` (가입 API는 ADMIN을 받지 않음)
+2. 사장님: 가입 → 사장님 전환 신청 → 관리자 승인 → 매장·메뉴 등록
+3. 고객: 가입 → 주문 → 결제(모의 결제 또는 토스 테스트 키)
+
+### 8-7. 확인 항목 (배포 후)
+
+| 항목 | 방법 |
+|---|---|
+| HTTPS·프록시 | `https://xxx.vercel.app/api/stores` 200 |
+| Refresh 쿠키 | 로그인 후 새로고침해도 로그인 유지 (Safari 포함), 응답 `Set-Cookie`가 vercel.app 도메인 |
+| SPA 새로고침 | `/owner/orders`에서 새로고침 → 404 아님 |
+| SSE | 사장님 화면 접속 → 다른 브라우저에서 결제 → 토스트. 늦거나 끊기면 `VITE_STREAM_BASE_URL` |
+| 소셜 로그인 | 카카오·구글 로그인 → `/oauth/callback` → 로그인 유지 |
+| 비공개 포트 | 외부에서 `:8081`·`:5432`·`:3000` 접속 불가 |
+
+한계
+- 단일 VM: VM·디스크 장애 시 서비스 중단·데이터 손실(백업은 수동). 학습·시연용
+- Vercel 외부 rewrite의 SSE 동작, Oracle 유휴 회수 조건은 배포 후 실측·확인 필요

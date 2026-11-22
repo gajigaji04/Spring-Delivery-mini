@@ -28,10 +28,6 @@ import java.util.Set;
 @EnableConfigurationProperties(SocialLoginProperties.class)
 public class SocialLoginConfig {
 
-    // 공급자 콜백 주소 — 공급자 콘솔에 등록할 값: {API 주소}/login/oauth2/code/{kakao|google}
-    // {baseUrl}은 요청의 Host 기준 — 프록시 뒤에 두면 forward 헤더 설정이 필요 (docs/operations.md)
-    static final String REDIRECT_URI = "{baseUrl}/login/oauth2/code/{registrationId}";
-
     @Bean
     public SocialClientRegistrations socialClientRegistrations(SocialLoginProperties properties,
                                                                List<SocialProvider> providers) {
@@ -41,7 +37,9 @@ public class SocialLoginConfig {
             known.add(provider.registrationId());
             SocialLoginProperties.Client client = properties.providers().get(provider.registrationId());
             if (client != null && client.configured()) {
-                enabled.put(provider, provider.clientRegistration(client.clientId(), client.clientSecret(), REDIRECT_URI));
+                // 공급자 콜백 주소 — 공급자 콘솔에 등록할 값: {redirect-base-url 또는 요청 주소}/login/oauth2/code/{kakao|google}
+                enabled.put(provider, provider.clientRegistration(client.clientId(), client.clientSecret(),
+                        properties.redirectUriTemplate()));
             }
         }
         // 구현이 없는 공급자 키(오타 등)는 조용히 무시하지 않고 기동 실패
