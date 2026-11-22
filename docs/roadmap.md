@@ -125,7 +125,17 @@
 - 설계 판단: 세션 대신 서명 쿠키(시작 기록·연결 요청), 관리자 연결 불가, 공급자 Access Token 미보관 (`docs/architecture.md` 소셜 로그인 장)
 - 남은 것: 실제 카카오·구글 로그인 확인(`docs/local-verification.md` 9장 — 콘솔 키 필요), 소셜 전용 회원 비밀번호 설정, 회원 합치기(필요 시)
 
-## 다음 후보 — 배포 (2026-11-22 사용자 결정: Vercel, 별도 작업)
+## 다음 작업 — 배포 (2026-11-22 사용자 결정: A안 = Oracle Cloud Always Free VM + Vercel, 무료 티어·포트폴리오용, 이슈 #86, 브랜치 `feat/86-deploy-oracle-vercel`)
+- **저장소 쪽 준비 완료(2026-11-22)** — 절차·설계는 `docs/operations.md` 8장. 남은 것은 사용자 할 일(VM·Vercel·콘솔)과 배포 후 확인(8-7)
+- 구성: 백엔드는 Oracle Always Free ARM VM 1대에 기존 compose(app·postgres·redis·kafka, 선택 monitoring) + Caddy(자동 HTTPS, 도메인 없으면 DuckDNS·sslip.io), 프론트는 Vercel
+- 고른 이유: Kafka·Redis·SSE·Grafana를 그대로 시연. B안(Render·Koyeb 512MB + Neon + Upstash)은 무료 Kafka가 없어 알림·SSE가 멈추고, 휴면 후 Spring 기동 지연·Redis 명령 한도 문제
+  (B안으로 갈 때도 코드 변경 없이 `SPRING_KAFKA_LISTENER_AUTO_STARTUP=false`·`SPRING_KAFKA_ADMIN_AUTO_CREATE=false`·`OUTBOX_PUBLISHER_ENABLED=false`로 Kafka 끔)
+- 위험: Oracle 가입 카드 인증·리전 용량 부족, 유휴 Always Free 인스턴스 회수 가능, 무료 한도 변동(2026-06 ARM 2 OCPU·12GB로 축소됐다는 출처 있음 — 가입 전 확인)
+- Refresh 쿠키: `*.vercel.app`과 API가 다른 사이트면 third-party 쿠키라 Safari 등에서 차단 → Vercel rewrite로 `/api/*`를 백엔드에 프록시해 같은 출처로 만드는 쪽을 우선 검토.
+  SSE가 프록시로 끊기거나 버퍼링되면 SSE만 API 주소로 직접 연결(Bearer만 쓰므로 CORS로 충분)
+- 저장소 쪽 할 일(Claude): 배포용 compose 파일, `Caddyfile`, `frontend/vercel.json`(SPA rewrite + `/api` 프록시), prod 환경변수 목록, `docs/operations.md` 배포 장
+- 사용자 할 일: Oracle 가입·VM 생성(ARM, 보안 목록 80·443), 도메인, Vercel 프로젝트 연결, 카카오·구글 콘솔 Redirect URI
+- 아래는 이전 메모(Vercel 결정 시점)
 - Vercel은 프론트엔드(Vite 정적 빌드)만 올림 → 백엔드(Spring Boot·PostgreSQL·Redis·Kafka)는 컨테이너를 돌릴 곳이 따로 필요
 - 프론트와 API 도메인이 다르면: Refresh 쿠키 `SameSite=None` + `Secure`(HTTPS 필수, `auth.refresh-token.*`), `CORS_ALLOWED_ORIGINS`에 Vercel 주소, `VITE_API_BASE_URL`
 - 소셜 로그인: `SOCIAL_FRONTEND_CALLBACK_URL`을 Vercel 주소로, 카카오·구글 콘솔에 배포 API 주소의 Redirect URI 추가

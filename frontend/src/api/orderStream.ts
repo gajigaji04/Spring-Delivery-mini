@@ -1,5 +1,5 @@
 import { tokenStore } from '../auth/tokenStore';
-import { ApiError, buildUrl, refreshAccessToken, toApiError } from './client';
+import { ApiError, STREAM_BASE_URL, buildUrl, refreshAccessToken, toApiError } from './client';
 import type { OwnerOrderEvent } from './types';
 
 /*
@@ -75,7 +75,7 @@ async function fetchStream(signal: AbortSignal): Promise<Response> {
   const headers: Record<string, string> = { Accept: 'text/event-stream' };
   const token = tokenStore.get();
   if (token) headers['Authorization'] = `Bearer ${token}`;
-  return fetch(buildUrl(STREAM_PATH), { headers, signal, cache: 'no-store' });
+  return fetch(buildUrl(STREAM_PATH, undefined, STREAM_BASE_URL), { headers, signal, cache: 'no-store' });
 }
 
 /**
