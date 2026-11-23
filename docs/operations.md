@@ -232,3 +232,88 @@ prod DB는 빈 상태. 데모용 계정은 화면(API)으로 만든다
 한계
 - 단일 VM: VM·디스크 장애 시 서비스 중단·데이터 손실(백업은 수동). 학습·시연용
 - Vercel 외부 rewrite의 SSE 동작, Oracle 유휴 회수 조건은 배포 후 실측·확인 필요
+
+## 9. 무료 시연 배포 — Render Free + Neon + Upstash + Vercel (`prod-free`, 2026-11-23)
+
+8장(Oracle A1)은 용량 부족으로 VM을 받지 못해, **월 $0·카드 등록 없이** 시연할 수 있는 구성을 따로 둠 (8장 구성은 A1을 받으면 그대로 사용 가능).
+무료 플랜 조사(2026-11-23, 공식 문서 기준): 백엔드는 Render 무료 웹 서비스(512MB·0.1 CPU, 15분 유휴 시 절전, 영구 디스크 없음), DB는 Neon Free(PG 18, 5분 유휴 시 정지, 월 100 CU-시간), Redis는 Upstash Free(월 50만 명령, 250MB).
+영구 무료 Kafka는 Aiven Free뿐인데 유휴 시 꺼지고 콘솔에서 직접 켜야 해 시연에 부적합 → **Kafka는 빼고 이벤트를 같은 프로세스에서 직접 전달**.
+
+```
+브라우저 ── https://xxx.vercel.app ──► Vercel (정적 파일)
+              │  /api/* · /oauth2/* · /login/oauth2/*  (vercel.json rewrite = 프록시)
+              ▼
+     Render Free 웹 서비스 (Docker, SPRING_PROFILES_ACTIVE=prod,prod-free, PORT)
+              ├─► Neon Free (PostgreSQL 18, TLS)
+              └─► Upstash Redis Free (TLS)
+              (Kafka 없음: outbox_events → DirectOutboxSender → 알림 저장·SSE)
+```
+
+### 9-1. 설계 결정
+
+| 항목 | 결정 | 이유 |
+|---|---|---|
+| 프로필 | `prod,prod-free` (prod 위에 덮어씀) | prod의 점검(`ProdProfileGuard`)·오류 숨김·API 문서 비활성을 그대로 유지하고 다른 점만 `application-prod-free.yml`에 둠 |
+| Kafka | `outbox.delivery=direct`, 리스너 자동 시작·토픽 생성 끔 | Outbox 저장·행 잠금·백오프·FAILED·관리자 재발행·중복 제거(`consumed_events`)는 그대로. Consumer 재시도·DLT 대신 발행 재시도(최대 10번) 후 FAILED (`docs/architecture.md` Kafka 장 "direct 전달") |
+| Kafka 주소 검사 | direct 모드면 `KAFKA_BOOTSTRAP_SERVERS` 필수에서 제외 | 나머지 필수 값·CORS·가짜 PG 금지 검사는 그대로 |
+| 포트 | `server.port=${PORT:8080}`, Actuator도 같은 포트(health만) | 공개 포트가 하나뿐. prometheus는 노출하지 않음, health 상세 숨김 유지 |
+| 커넥션 풀 | 최대 5 | 무료 DB 연결 한도. direct 전달이 발행 트랜잭션 안에서 트랜잭션을 하나 더 열어(REQUIRES_NEW) 2 이상 필요 |
+| JVM 옵션 | 이미지에 넣지 않고 `JAVA_TOOL_OPTIONS`로 | compose(dev)에 영향 없도록. 값은 9-3 |
+| 서버 절전 | 프론트가 확인 요청으로 깨우고 안내 배너 표시 | `frontend/README.md` "서버 깨우기" |
+| 24시간 깨워 두기 | **하지 않음** | Outbox 발행기가 1초마다 DB를 조회 → 앱이 깨어 있는 동안 Neon도 계속 켜짐. 0.25 CU로 한 달이면 약 182 CU-시간으로 무료 100을 넘음 (Neon 무료 최소 CU는 미확인) |
+| 인증·BCrypt | 변경 없음 | 0.1 CPU에서 로그인 약 1~3.5초(측정)는 감수 |
+
+### 9-2. 환경변수 (Render)
+
+| 변수 | 값 |
+|---|---|
+| `SPRING_PROFILES_ACTIVE` | `prod,prod-free` |
+| `DB_URL` | `jdbc:postgresql://<Neon direct 호스트>/<db>?sslmode=require` — **pooler가 아닌 direct 엔드포인트** (Flyway·`FOR UPDATE SKIP LOCKED`·락이 트랜잭션 풀링과 충돌하지 않도록) |
+| `DB_USERNAME`·`DB_PASSWORD` | Neon 계정 |
+| `JWT_SECRET` | 32바이트 이상 임의 값 |
+| `REDIS_HOST`·`REDIS_PORT` | Upstash 엔드포인트·포트 |
+| `SPRING_DATA_REDIS_SSL_ENABLED`·`SPRING_DATA_REDIS_PASSWORD` | `true`·Upstash 토큰 (사용자 이름이 필요하면 `SPRING_DATA_REDIS_USERNAME`) |
+| `CORS_ALLOWED_ORIGINS` | Vercel 주소 |
+| `JAVA_TOOL_OPTIONS` | `-XX:TieredStopAtLevel=1 -XX:+UseSerialGC -Xss512k -XX:MaxRAMPercentage=60` |
+| `PORT` | Render가 지정 (지정하지 않으면 8080) |
+| 소셜·토스 키 | 8장과 같음 (`SOCIAL_REDIRECT_BASE_URL` 등). `TOSS_MODE=fake`는 prod 점검이 막음 |
+
+Render 헬스체크 경로를 지정할 수 있으면 `/actuator/health/liveness` (외부 의존성과 무관 → DB 일시 장애로 재시작이 반복되지 않음).
+프론트(Vercel)는 8-4와 같고 `vercel.json`의 `API_DOMAIN`을 Render 주소로 바꿈.
+
+### 9-3. 로컬 측정 (512MB · `--cpus` 상한, 2026-11-23)
+
+Docker로 Render 무료 사양을 흉내 낸 값 — **Render 실제 CPU 배분은 미확인**이라 배포 후 다시 잼.
+
+| 구성 | CPU | 기동 | 메모리(기동 직후 → 요청 후) | 첫 로그인 | 목록 평균 |
+|---|---|---|---|---|---|
+| dev, JVM 기본값, Kafka 연결 | 0.1 | 430초 | 375 → 396MB | 24.0초 | 0.364초 |
+| dev, JVM 조정 + 전역 지연 초기화 | 0.1 | 253초 | 311 → 331MB | 17.9초 | 0.134초 |
+| dev, 위 + AppCDS | 0.1 | 116초 | 270 → 289MB | 11.0초 | 0.207초 |
+| **prod,prod-free, JVM 조정(지연 초기화 없음), DB 준비된 재기동** | 0.1 | **300초** | 303 → 319MB | 3.6초 | 0.149초 |
+| 〃 새 DB(마이그레이션 22개 포함) | 0.1 | 330초 | 303 → 317MB | 2.7초 | 0.081초 |
+| 〃 | 1.0 | 25초 | 309 → 323MB | 0.18초 | 0.019초 |
+
+- 모든 경우 OOM 없음, prod-free에서 Kafka 접속 시도 로그 0줄, ERROR 로그 0건, `/actuator/health` 200 · `/actuator/prometheus` 404
+- **전역 지연 초기화(`spring.main.lazy-initialization`)는 쓰지 않음**: `@Scheduled`(정산)·`@KafkaListener` 빈이 만들어지지 않아 등록되지 않을 수 있음. 기동은 약 1분 느려짐
+- 0.1 CPU가 엄격히 적용되면 절전 후 첫 접속에 약 5분 → 시연 전 미리 접속해 깨워 둘 것
+
+### 9-4. AppCDS 검토 (보류)
+
+- 효과: 같은 조건에서 기동 253초 → 116초 (dev, 지연 초기화 포함 측정)
+- 문제: 학습 실행(`-XX:ArchiveClassesAtExit` + `-Dspring.context.exit=onRefresh`)이 컨텍스트를 끝까지 올려 **Flyway·Hibernate 검증이 DB에 접속** → Render의 Docker 빌드 단계(DB 없음)에서는 그대로 못 씀
+- 방법 후보: ① 학습 때만 Flyway·JDBC 메타데이터 접근·Kafka 토픽 생성을 끄는 설정(검증 필요) ② GitHub Actions에서 DB를 띄워 학습한 이미지를 GHCR에 올리고 Render가 이미지로 배포(Render 무료 플랜의 이미지 배포 지원은 미확인)
+- 아카이브는 JDK·클래스패스가 같아야 쓰임(같은 이미지 안에서 만들어야 함), 이미지가 약 150MB 커짐
+- 결정(2026-11-23): **Render 실측 후** 기동이 너무 느릴 때만 ①부터 검증
+
+### 9-5. 확인 항목 (배포 후, 현재 미확인)
+
+| 항목 | 방법 |
+|---|---|
+| 실제 기동 시간 | Render 로그 `Started ... in N seconds`, 절전 후 첫 접속 시간 |
+| 기동 대기 제한 | 기동이 수 분 걸릴 때 Render가 실패로 처리하는지 |
+| `PORT`·헬스체크 | 포트 감지, 헬스체크 경로 지정 가능 여부 |
+| 프록시 대기 한도 | 절전 중 Vercel rewrite가 504를 주는지 → 프론트 배너·GET 재시도로 대응 |
+| Neon·Upstash 사용량 | 한 달 CU-시간·명령 수가 무료 한도 안인지 |
+| 정산 스케줄러 | 01:10에 절전 중이면 실행되지 않음 → 시연은 관리자 재집계 API로 |
+| 기능 | 8-7 표 (비공개 포트 항목 제외) + 결제 후 알림 생성·사장님 SSE 토스트 |

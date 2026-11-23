@@ -88,3 +88,44 @@ describe('API 클라이언트 인증 처리', () => {
     expect(page).toEqual({ items: [{ id: 1 }], hasNext: true, nextAfterId: 1 });
   });
 });
+
+describe('API 클라이언트 서버 깨우기', () => {
+  const fetchMock = vi.fn<typeof fetch>();
+
+  beforeEach(() => {
+    vi.stubGlobal('fetch', fetchMock);
+  });
+
+  afterEach(() => {
+    fetchMock.mockReset();
+    vi.unstubAllGlobals();
+  });
+
+  it('GET이 게이트웨이 오류(504)를 받으면 서버가 응답할 때까지 확인한 뒤 한 번 다시 보낸다', async () => {
+    let calls = 0;
+    fetchMock.mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.includes('/api/users/social/providers')) return json(200, []);
+      calls++;
+      return calls === 1 ? new Response('', { status: 504 }) : json(200, { ok: true });
+    });
+
+    const res = await request<{ ok: boolean }>('/api/stores');
+
+    expect(res.data.ok).toBe(true);
+    expect(calls).toBe(2);
+  });
+
+  it('GET이 아닌 요청은 서버를 깨우기만 하고 자동으로 다시 보내지 않는다', async () => {
+    let calls = 0;
+    fetchMock.mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.includes('/api/users/social/providers')) return json(200, []);
+      calls++;
+      throw new TypeError('Failed to fetch');
+    });
+
+    await expect(request('/api/payments', { method: 'POST', body: {} })).rejects.toBeInstanceOf(TypeError);
+    expect(calls).toBe(1);
+  });
+});

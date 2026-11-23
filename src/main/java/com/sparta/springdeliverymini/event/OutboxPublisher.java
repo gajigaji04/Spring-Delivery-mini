@@ -5,12 +5,9 @@ import com.sparta.springdeliverymini.entity.OutboxEvent;
 import com.sparta.springdeliverymini.repository.OutboxEventRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.kafka.clients.producer.ProducerRecord;
-import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -21,6 +18,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
 // Outbox → Kafka 발행 (#42, docs/architecture.md Kafka 장)
+// 실제 전달은 OutboxSender — 기본은 Kafka(KafkaOutboxSender), 무료 배포(prod-free)는 같은 프로세스 직접 호출(DirectOutboxSender)
 //
 // - 업무 트랜잭션과 분리된 별도 트랜잭션에서 실행 (OutboxPublishScheduler가 주기 호출)
 //   → Kafka 장애·지연은 이 발행만 늦출 뿐 결제·환불·배달완료 처리에는 영향 없음
@@ -40,7 +38,7 @@ public class OutboxPublisher {
     public static final String HEADER_EVENT_TYPE = "eventType";
 
     private final OutboxEventRepository outboxEventRepository;
-    private final KafkaTemplate<String, String> kafkaTemplate;
+    private final OutboxSender outboxSender;
     private final OutboxProperties properties;
     private final Clock clock;
 
@@ -60,7 +58,7 @@ public class OutboxPublisher {
         //   보내지 않은 이벤트는 그대로 PENDING(시도 횟수 증가 없음) → 다음 주기에 다시 시도
         List<CompletableFuture<?>> futures = new ArrayList<>(events.size());
         for (OutboxEvent event : events) {
-            CompletableFuture<?> future = send(event);
+            CompletableFuture<?> future = outboxSender.send(event);
             futures.add(future);
             if (future.isCompletedExceptionally()) {
                 break;
@@ -103,21 +101,6 @@ public class OutboxPublisher {
             log.debug("Outbox 발행 published={}, retry={}, failed={}", published, retry, failed);
         }
         return new PublishResult(published, retry, failed);
-    }
-
-    // 메시지 키 = 주문 id → 같은 주문의 이벤트는 같은 파티션
-    // 메타데이터를 못 받는 등 send 자체가 예외를 던져도 실패 결과로 바꿔 다른 이벤트 발행은 계속
-    private CompletableFuture<?> send(OutboxEvent event) {
-        ProducerRecord<String, String> record = new ProducerRecord<>(
-                properties.topic(), String.valueOf(event.getAggregateId()), event.getPayload());
-        record.headers()
-                .add(HEADER_EVENT_ID, event.getEventId().toString().getBytes(StandardCharsets.UTF_8))
-                .add(HEADER_EVENT_TYPE, event.getEventType().name().getBytes(StandardCharsets.UTF_8));
-        try {
-            return kafkaTemplate.send(record);
-        } catch (RuntimeException e) {
-            return CompletableFuture.failedFuture(e);
-        }
     }
 
     private static String summary(Throwable e) {
