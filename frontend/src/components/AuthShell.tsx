@@ -1,12 +1,14 @@
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { demoAccounts } from '../auth/demoAccounts';
+import { loadDemoAccounts } from '../auth/demoAccounts';
+import { useAsync } from '../hooks/useAsync';
 import { IconReceipt, IconBag, IconStore, Logo } from './Icons';
 import { SERVICE_NAME } from './Layout';
 
 /** 로그인·가입 공통 화면: 왼쪽은 제품 조각(주문 티켓·입금 예정), 오른쪽은 폼 패널 */
 export function AuthShell({ topRight, children }: { topRight: ReactNode; children: ReactNode }) {
-  const demo = demoAccounts.length > 0;
+  const { data: demoAccounts } = useAsync(loadDemoAccounts, []);
+  const demo = (demoAccounts?.length ?? 0) > 0;
   return (
     <div className="login">
       <header className="wrap login__top">

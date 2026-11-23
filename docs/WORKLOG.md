@@ -21,6 +21,9 @@ CLAUDE.md에서 옮긴 진행 상황·다음 작업·남은 후속 기록(2026-1
   - `POST /api/users/email-verification/confirm`(permitAll), `MyInfoResponse.emailVerified·pendingEmail`, 프론트 `EmailVerificationPage`(버튼으로 인증)
   - **Render 추가 환경변수: `EMAIL_VERIFICATION_URL=https://{프론트}/email-verification`** (`MAIL_SENDER=brevo`면 prod 점검 필수)
   - 테스트: 백엔드 113클래스 985건, 프론트 81건·빌드 통과
+- 2026-11-23 **배포 데모 데이터 미노출 확인**: #91 머지 후에도 Neon이 빈 상태 — 원인은 Render에 `DEMO_*` 미설정(`DEMO_DATA_ENABLED` 기본 false, 코드 문제 아님)
+  - `.env.example`·`.env` 끝에 데모 데이터·메일(Brevo) 변수 블록 추가(모두 주석, `.env`에는 생성한 데모 비밀번호 기록). 문서 `docs/operations.md` 9-6, README 환경변수 표
+  - 사용자 할 일: Render `DEMO_DATA_ENABLED=true`·`DEMO_PASSWORD`·`DEMO_ADMIN_PASSWORD` → 재배포 → 로그 `데모 데이터 생성 완료` → Vercel `VITE_DEMO_ACCOUNTS` 재배포
 
 ## 진행 상황 (#78 머지 완료(PR #82) / 소셜 로그인 + 포트폴리오 보강 커밋 완료(`60e0136`)·푸시·PR 전 — 브랜치 `feat/79-social-login`, 2026-11-22)
 - 완료: 매장·메뉴·주문, 결제(수수료), 일 정산 집계·확정·지급, 취소·환불·이월(#30), 매장별 수수료율(#32),

@@ -39,7 +39,7 @@ class AdminStoreServiceTest {
     @BeforeEach
     void setUp() {
         service = new AdminStoreService(storeRepository, userRepository,
-                new PaymentFeeProperties(new BigDecimal("0.05")));
+                new PaymentFeeProperties(new BigDecimal("0.05")), DemoAdminScopes.disabled());
         store = new Store("치킨집", new User("owner1", "pw", Role.OWNER));
         ReflectionTestUtils.setField(store, "id", 1L);
     }

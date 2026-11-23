@@ -644,7 +644,7 @@ Refresh Token이 쿠키라 다른 사이트가 재발급·로그아웃을 위조
 - 메일은 비밀번호 재설정과 같은 커밋 뒤 전용 스레드(`mail.PasswordResetMailer`)로 발송, 실패는 로그만(사용자가 1분 뒤 재요청)
 - 남은 후속: 만료·사용된 토큰 행 정리(재설정 토큰과 같이 아직 없음)
 
-- **공개 데모 계정**(`demo-data.*`, `docs/operations.md` 9-6)은 비밀번호·이메일 변경 403 `DEMO_ACCOUNT_PROTECTED`
+- **데모 계정**(`demo-data.*`, `docs/operations.md` 9-6)은 비밀번호·이메일 변경 403 `DEMO_ACCOUNT_PROTECTED`. 데모 관리자는 비밀번호 없는 체험 로그인(`DemoLoginService`)으로 들어오고 데모 회원·매장 데이터만 다룸(`DemoAdminScope`, 403 `DEMO_ADMIN_SCOPE`)
 - 이미 발급된 Access Token은 변경·재설정 뒤에도 만료(최대 15분)까지 유효 — 로그아웃과 같은 한계
 
 ### 역할 부여 — 사장님 승인제 (V17)

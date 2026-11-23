@@ -64,7 +64,7 @@ class AdminSettlementServiceTest {
         Clock clock = Clock.fixed(NOW.atZone(TimeConfig.ZONE).toInstant(), TimeConfig.ZONE);
         service = new AdminSettlementService(settlementRepository, settlementStatusHistoryRepository,
                 settlementAggregationFailureRepository, storeRepository, userRepository,
-                settlementAggregationService, clock);
+                settlementAggregationService, DemoAdminScopes.disabled(), clock);
     }
 
     private Store store() {

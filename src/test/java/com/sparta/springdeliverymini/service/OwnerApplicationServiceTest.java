@@ -45,7 +45,8 @@ class OwnerApplicationServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new OwnerApplicationService(ownerApplicationRepository, userRepository, orderRepository, CLOCK);
+        service = new OwnerApplicationService(ownerApplicationRepository, userRepository, orderRepository, CLOCK,
+                DemoAdminScopes.disabled());
     }
 
     private User user(Long id, String username, Role role) {

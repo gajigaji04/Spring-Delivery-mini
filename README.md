@@ -198,7 +198,7 @@ flowchart LR
 | `GRAFANA_ADMIN_PASSWORD` | monitoring | Grafana admin 비밀번호. `--profile monitoring`에서 필수 (빈 값·`admin`이면 Grafana만 기동 실패) |
 | `MAIL_SENDER` | - | 비밀번호 찾기·이메일 인증 메일 (V23·V24): `log`(기본, 링크를 앱 로그로) / `brevo`(실제 발송) / `none`(끔 → 비밀번호 찾기·이메일 등록 503). prod 기본 `none`, prod에서 `log`는 기동 실패 |
 | `BREVO_API_KEY` · `MAIL_FROM_ADDRESS` · `PASSWORD_RESET_URL` · `EMAIL_VERIFICATION_URL` | brevo일 때 | Brevo API 키, Brevo에서 인증한 발신 주소, 메일 링크가 여는 프론트 화면(기본 `http://localhost:5173/password-reset`, `.../email-verification` — V24) — [운영 프로필 9-7](docs/operations.md) |
-| `DEMO_DATA_ENABLED` · `DEMO_PASSWORD` · `DEMO_ADMIN_PASSWORD` | - | 기동 시 데모 회원·매장·메뉴·주문을 한 번만 생성 (기본 꺼짐). 공개 계정 비밀번호 / 비공개 관리자 비밀번호 — [운영 프로필 9-6](docs/operations.md) |
+| `DEMO_DATA_ENABLED` · `DEMO_PASSWORD` · `DEMO_ADMIN_PASSWORD` | - | 기동 시 데모 회원·매장·메뉴·주문·지난 3일 정산을 한 번만 생성 (기본 꺼짐), 로그인 화면 체험하기 버튼(관리자는 비밀번호 없이 데모 데이터만). 공개 계정 비밀번호 / 비공개 관리자 비밀번호(선택. 직접 정하는 8자 이상 값, 기본값 없음. 계정이 생긴 뒤 바꿔도 반영 안 됨) — [운영 프로필 9-6](docs/operations.md) |
 
 ### 프로필
 | 프로필 | 용도 | DB | 설정 파일 |

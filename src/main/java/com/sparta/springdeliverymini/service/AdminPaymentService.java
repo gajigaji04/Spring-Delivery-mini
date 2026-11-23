@@ -37,13 +37,15 @@ public class AdminPaymentService {
     private final OutboxEventRecorder outboxEventRecorder; // 환불 이벤트 (#42)
     private final PgCancelService pgCancelService; // 토스 결제 취소 요청 (V20)
     private final PaymentRefundRepository paymentRefundRepository; // 환불 1건 기록 (V21)
+    private final DemoAdminScope demoAdminScope; // 데모 관리자는 데모 매장 결제만 환불
 
     // 전액 환불 — 남은 금액 전부 (부분 환불이 없던 결제면 결제 금액 전부) → REFUNDED
     // 고객 결제액·플랫폼 수수료·매장 정산액이 모두 취소됨
     @Transactional
     public PaymentResponse refund(Long paymentId, String username) {
-        validateAdmin(username);
+        User admin = validateAdmin(username);
         Payment payment = lockPayment(paymentId);
+        demoAdminScope.requireStore(admin, payment.getOrder().getStore().getId());
         refundAndRecord(payment, payment.refundableAmount(), "관리자 환불");
         return PaymentResponse.from(payment);
     }
@@ -52,8 +54,9 @@ public class AdminPaymentService {
     // 수수료는 환불액 비율대로 함께 취소 (PaymentFee.refundPortion, docs/money-policy.md 부분 환불)
     @Transactional
     public PaymentRefundResponse partialRefund(Long paymentId, long amount, String reason, String username) {
-        validateAdmin(username);
+        User admin = validateAdmin(username);
         Payment payment = lockPayment(paymentId);
+        demoAdminScope.requireStore(admin, payment.getOrder().getStore().getId());
         // 상태가 환불 가능할 때만 금액을 따짐 — 이미 끝난 결제는 엔티티가 409(이미 환불·취소)로 알려 줌
         boolean refundable = payment.getStatus() == PaymentStatus.COMPLETED
                 || payment.getStatus() == PaymentStatus.PARTIALLY_REFUNDED;
@@ -90,12 +93,13 @@ public class AdminPaymentService {
     }
 
     // SecurityConfig에서도 ADMIN만 허용하지만, 토큰 발급 후 역할이 바뀐 경우에 대비해 DB 기준으로 한 번 더 확인
-    private void validateAdmin(String username) {
+    private User validateAdmin(String username) {
         // 토큰은 유효하지만 그 사이 회원이 삭제된 경우 → 401
         User currentUser = userRepository.findByUsername(username)
                 .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "존재하지 않는 회원입니다."));
         if (currentUser.getRole() != Role.ADMIN) {
             throw new ApiException(HttpStatus.FORBIDDEN, "관리자만 환불할 수 있습니다.");
         }
+        return currentUser;
     }
 }

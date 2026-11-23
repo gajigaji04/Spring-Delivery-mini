@@ -11,6 +11,7 @@ import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.Collection;
 import java.util.Optional;
 
 public interface OwnerApplicationRepository extends JpaRepository<OwnerApplication, Long> {
@@ -25,6 +26,11 @@ public interface OwnerApplicationRepository extends JpaRepository<OwnerApplicati
     // 인덱스 idx_owner_applications_status_id, 정렬·크기는 PageQuery.toPageable()
     @EntityGraph(attributePaths = {"user", "decidedBy"})
     Slice<OwnerApplication> findAllByStatus(OwnerApplicationStatus status, Pageable pageable);
+
+    // 데모 관리자 목록 — 데모 회원의 신청만 (service.DemoAdminScope)
+    @EntityGraph(attributePaths = {"user", "decidedBy"})
+    Slice<OwnerApplication> findAllByStatusAndUserUsernameIn(OwnerApplicationStatus status, Collection<String> usernames,
+                                                             Pageable pageable);
 
     // 승인·거절용 조회 — 행 잠금. 같은 신청에 승인·거절이 동시에 와도 뒤 요청은 바뀐 상태를 읽고 409
     // (신청자 users 행은 JOIN하지 않음 — 함께 잠그지 않도록, 역할 변경은 dirty checking으로 UPDATE)

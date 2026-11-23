@@ -53,14 +53,16 @@ public class AdminSettlementService {
     private final StoreRepository storeRepository;
     private final UserRepository userRepository;
     private final SettlementAggregationService settlementAggregationService;
+    private final DemoAdminScope demoAdminScope; // 데모 관리자는 데모 매장 정산만
     private final Clock clock; // 확정·지급 시각 기준 (config.TimeConfig, Asia/Seoul)
 
     // 날짜별 정산 목록 — status가 있으면 그 상태만
     public List<SettlementResponse> getSettlements(LocalDate date, SettlementStatus status, String username) {
-        validateAdmin(username);
-        List<Settlement> settlements = (status == null)
+        User admin = validateAdmin(username);
+        List<Settlement> settlements = demoAdminScope.filterByStore(admin, (status == null)
                 ? settlementRepository.findAllBySettlementDateOrderById(date)
-                : settlementRepository.findAllBySettlementDateAndStatusOrderById(date, status);
+                : settlementRepository.findAllBySettlementDateAndStatusOrderById(date, status),
+                settlement -> settlement.getStore().getId());
 
         // 이력은 정산마다 따로 조회하지 않고 한 번에 가져와 정산별로 묶음 (N+1 방지)
         Map<Long, List<SettlementStatusHistory>> histories = settlements.isEmpty() ? Map.of()
@@ -74,10 +76,10 @@ public class AdminSettlementService {
 
     // 정산 1건의 상태 변경 이력 (기록 순) — V11 전에 일어난 전이는 이력이 없음
     public List<SettlementStatusHistoryResponse> getHistories(Long settlementId, String username) {
-        validateAdmin(username);
-        if (!settlementRepository.existsById(settlementId)) {
-            throw new ApiException(HttpStatus.NOT_FOUND, "정산이 없습니다.");
-        }
+        User admin = validateAdmin(username);
+        Settlement settlement = settlementRepository.findById(settlementId)
+                .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "정산이 없습니다."));
+        demoAdminScope.requireStore(admin, settlement.getStore());
         return settlementStatusHistoryRepository.findAllWithActor(List.of(settlementId)).stream()
                 .map(SettlementStatusHistoryResponse::from)
                 .toList();
@@ -86,10 +88,11 @@ public class AdminSettlementService {
     // 집계 실패 기록 목록 (최근 실패 순) — status가 있으면 그 상태만 (FAILED = 재집계 대상)
     public List<SettlementAggregationFailureResponse> getAggregationFailures(
             SettlementAggregationFailureStatus status, String username) {
-        validateAdmin(username);
-        List<SettlementAggregationFailure> failures = (status == null)
+        User admin = validateAdmin(username);
+        List<SettlementAggregationFailure> failures = demoAdminScope.filterByStore(admin, (status == null)
                 ? settlementAggregationFailureRepository.findAllByOrderByLastFailedAtDescIdDesc()
-                : settlementAggregationFailureRepository.findAllByStatusOrderByLastFailedAtDescIdDesc(status);
+                : settlementAggregationFailureRepository.findAllByStatusOrderByLastFailedAtDescIdDesc(status),
+                failure -> failure.getStore().getId());
         return failures.stream().map(SettlementAggregationFailureResponse::from).toList();
     }
 
@@ -98,6 +101,7 @@ public class AdminSettlementService {
     public SettlementResponse confirm(Long settlementId, String username) {
         User admin = validateAdmin(username);
         Settlement settlement = findForUpdate(settlementId);
+        demoAdminScope.requireStore(admin, settlement.getStore());
         SettlementStatus before = settlement.getStatus();
         settlement.confirm(LocalDateTime.now(clock));
         settlementStatusHistoryRepository.save(SettlementStatusHistory.confirmed(settlement, admin));
@@ -113,6 +117,7 @@ public class AdminSettlementService {
     public SettlementResponse pay(Long settlementId, String username) {
         User admin = validateAdmin(username);
         Settlement settlement = findForUpdate(settlementId);
+        demoAdminScope.requireStore(admin, settlement.getStore());
         SettlementStatus before = settlement.getStatus();
         settlement.markPaid(LocalDateTime.now(clock));
         settlementStatusHistoryRepository.save(SettlementStatusHistory.paid(settlement, admin));
@@ -133,6 +138,10 @@ public class AdminSettlementService {
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public SettlementReaggregationResponse reaggregate(LocalDate date, Long storeId, String username) {
         User admin = validateAdmin(username);
+        // 데모 관리자는 데모 매장을 지정해야 함 (매장 없이 요청하면 다른 방문자 매장까지 집계되므로)
+        if (demoAdminScope.isDemoAdmin(admin)) {
+            demoAdminScope.requireStore(admin, storeId);
+        }
 
         LocalDate lastClosed = SettlementPeriod.lastConfirmedDate(LocalDateTime.now(clock));
         if (date.isAfter(lastClosed)) {

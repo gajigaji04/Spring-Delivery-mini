@@ -39,6 +39,7 @@ public class AdminOutboxService {
     private final OutboxEventRepository outboxEventRepository;
     private final UserRepository userRepository;
     private final Clock clock;
+    private final DemoAdminScope demoAdminScope; // 시스템 전체 이벤트라 데모 관리자는 사용 불가
 
     // 상태별 목록 (id 오름차순 페이징)
     public Slice<OutboxEventResponse> getEvents(OutboxEventStatus status, PageQuery pageQuery, String username) {
@@ -81,5 +82,7 @@ public class AdminOutboxService {
         if (currentUser.getRole() != Role.ADMIN) {
             throw new ApiException(HttpStatus.FORBIDDEN, "관리자만 이벤트를 관리할 수 있습니다.");
         }
+        // 다른 회원의 주문·결제 내용이 담긴 이벤트 → 데모 관리자는 목록도 보지 않음
+        demoAdminScope.deny(currentUser, "Outbox 이벤트 관리");
     }
 }

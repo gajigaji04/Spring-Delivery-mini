@@ -200,7 +200,7 @@ docker compose -f deploy/compose.prod.yml --env-file deploy/.env.prod logs -f ap
 
 1. `frontend/vercel.json`의 `API_DOMAIN`(3곳)을 실제 API 도메인으로 바꿔 커밋 — rewrite 대상은 정적 설정이라 환경변수를 못 씀
 2. Vercel에서 저장소 가져오기 → Root Directory `frontend`, Framework `Vite`(빌드 `npm run build`, 출력 `dist`)
-3. 환경변수(선택): `VITE_STREAM_BASE_URL`(SSE 직접 연결 시), `VITE_DEMO_ACCOUNTS`(공개 데모 계정 버튼 — CUSTOMER·OWNER만, **ADMIN은 넣지 않음**: 빌드 결과에 그대로 보임)
+3. 환경변수(선택): `VITE_STREAM_BASE_URL`(SSE 직접 연결 시). 체험 계정 버튼은 환경변수가 아니라 서버(`GET /api/users/demo-accounts`, 9-6)에서 받음
    - `VITE_API_BASE_URL`은 `frontend/.env.production`이 빈 값(같은 출처)으로 정함
 4. 배포 주소(`https://xxx.vercel.app`)를 VM의 `FRONTEND_ORIGIN`에 넣고 앱 재생성
 5. 직접 접속·새로고침(`/owner/orders` 등)은 마지막 rewrite가 `index.html`로 보냄 (정적 파일이 먼저 매칭됨)
@@ -280,7 +280,7 @@ prod DB는 빈 상태. 데모용 계정은 화면(API)으로 만든다
 | 소셜 주소 | `SOCIAL_REDIRECT_BASE_URL`=`https://{프론트}`, `SOCIAL_FRONTEND_CALLBACK_URL`=`https://{프론트}/oauth/callback` (키가 있으면 뒤쪽은 필수 — prod 점검) |
 | 토스 키 | 8장과 같음. `TOSS_MODE=fake`는 prod 점검이 막음 |
 | 비밀번호 찾기 (V23)·이메일 인증 (V24) | `MAIL_SENDER=brevo`, `BREVO_API_KEY`, `MAIL_FROM_ADDRESS`(Brevo에서 인증한 주소), `PASSWORD_RESET_URL`=`https://{프론트}/password-reset`, **`EMAIL_VERIFICATION_URL`=`https://{프론트}/email-verification`(V24 추가)** — 비우면 `none`(비밀번호 찾기·이메일 등록 503), brevo면 넷 다 필수 (prod 점검) |
-| 데모 데이터 | `DEMO_DATA_ENABLED=true`, `DEMO_PASSWORD`(공개), `DEMO_ADMIN_PASSWORD`(비공개) — 9-6 |
+| 데모 데이터 | `DEMO_DATA_ENABLED=true`, `DEMO_PASSWORD`(공개), `DEMO_ADMIN_PASSWORD`(비공개, 선택) — 9-6 |
 
 `{프론트}`는 **Vercel 프로덕션 도메인**(`<프로젝트>.vercel.app`). 브랜치 미리보기 주소(`<프로젝트>-git-<브랜치>-<팀>.vercel.app`)는
 Vercel Authentication(Deployment Protection)으로 막혀 있어 외부 방문자·카카오·구글 콜백이 들어오지 못함(302 → Vercel 로그인).
@@ -289,7 +289,6 @@ CORS·소셜·재설정 주소를 모두 같은 프로덕션 도메인으로 맞
 Render 헬스체크 경로를 지정할 수 있으면 `/actuator/health/liveness` (외부 의존성과 무관 → DB 일시 장애로 재시작이 반복되지 않음).
 프론트(Vercel)는 8-4와 같고 `vercel.json`의 rewrite 대상 3곳을 Render 주소(`https://<서비스>.onrender.com`)로 바꿔 **main에 커밋**
 (Vercel은 저장소의 파일로 빌드 — 로컬 수정만으로는 반영되지 않음. 자리표시자 그대로면 `/api/*`가 백엔드에 닿지 않아 로그인·목록 모두 실패).
-Vercel 환경변수 `VITE_DEMO_ACCOUNTS`(9-6)는 빌드 때 들어가므로 바꾼 뒤 재배포.
 
 ### 9-3. 로컬 측정 (512MB · `--cpus` 상한, 2026-11-23)
 
@@ -329,7 +328,7 @@ Docker로 Render 무료 사양을 흉내 낸 값 — **Render 실제 CPU 배분�
 | 기능 | 8-7 표 (비공개 포트 항목 제외) + 결제 후 알림 생성·사장님 SSE 토스트 |
 | 소셜 버튼 | `https://{프론트}/api/users/social/providers`가 `["kakao","google"]` |
 | 비밀번호 찾기 | 가입 시 이메일 입력 → 인증 메일 링크 → '이메일 인증하기' → 로그인 화면 "비밀번호를 잊으셨나요?" → 메일 링크 → 새 비밀번호로 로그인, 다른 기기 로그아웃 |
-| 데모 데이터 | Render 로그 `데모 데이터 생성 완료`, 로그인 화면 데모 버튼으로 사장님·고객 로그인 |
+| 데모 데이터 | Render 로그 `데모 기본 데이터 생성 완료`·`데모 정산 생성 완료`, 로그인 화면 체험하기 버튼 3개로 고객·사장님·관리자 로그인 |
 
 ### 9-6. 데모 데이터 (`demo-data.*`, `maintenance.DemoDataSeeder`)
 
@@ -338,15 +337,23 @@ Docker로 Render 무료 사양을 흉내 낸 값 — **Render 실제 CPU 배분�
 
 | 만드는 것 | 내용 |
 |---|---|
-| 관리자 `demoadmin` | `DEMO_ADMIN_PASSWORD`가 있으면 로그인 가능, 없으면 비밀번호 NULL(승인 기록용, 로그인 불가). 같은 아이디가 이미 있으면 그대로 씀 |
+| 관리자 `demoadmin` | 방문자는 비밀번호 없이 **관리자 체험 로그인**(`POST /api/users/demo-login/admin`)으로 들어옴 — 데모 데이터만 다룸(아래). `DEMO_ADMIN_PASSWORD`는 운영자가 아이디·비밀번호로 확인할 때만(선택). 같은 아이디가 이미 있으면 그대로 씀 |
 | 사장님 `demoowner` | 고객 가입 → 전환 신청 → `demoadmin` 승인 (V17 경로 그대로), 매장 2개(데모 치킨·데모 분식) + 메뉴 6개 |
 | 고객 `democustomer` | 주문 4건: 배달완료·수락·결제완료(수락 대기)·주문요청(결제 전) — 결제 3건은 모의 결제, 수수료는 `Payment` 생성자 계산 |
+| 신청자 `demoapplicant` (2단계) | 승인 대기 사장님 전환 신청 1건(데모 떡집) — 관리자 승인 시연용, 비밀번호 없음(로그인 불가) |
+| 지난 3일 정산 (2단계) | 매장마다 하루 배달완료 주문(치킨 2·분식 1) → 스케줄러와 같은 집계로 정산 6건 → 가장 오래된 날 **지급**, 다음 날 **확정**, 마지막 날 **대기** (관리자가 확정·지급을 바로 해 볼 수 있음) |
 
-- 멱등: `demoowner`가 있으면 아무것도 하지 않음. 한 트랜잭션이라 중간 실패 시 전부 롤백 → 다음 기동에 다시
+- 멱등, 두 단계: 1단계는 `demoowner`, 2단계는 `demoapplicant`가 있으면 건너뜀 → **이미 1단계만 있는 배포 DB도 재배포하면 2단계만 더해짐**. 단계마다 한 트랜잭션이라 중간 실패 시 그 단계 전부 롤백 → 다음 기동에 다시
+- 2단계 정산 날짜는 **데모 매장이 생긴 날보다 앞**(최대 어제까지): 이미 집계된 날짜에 주문을 더하면 그 주문은 정산되지 않으므로. 집계가 실패한 매장은 집계 실패 기록에 남음 → 관리자 재집계(`storeId` 지정)
 - 결제 완료 이벤트(Outbox)·알림은 만들지 않음 (지난 일을 기록하는 데이터). 정산은 다음 날 스케줄러 또는 관리자 재집계 API
-- **공개 계정(`demoowner`·`democustomer`)은 비밀번호·이메일 변경 403 `DEMO_ACCOUNT_PROTECTED`** — 방문자 한 명이 바꾸면 데모가 깨지므로
-- 로그인 화면 버튼: Vercel `VITE_DEMO_ACCOUNTS=OWNER:demoowner:{DEMO_PASSWORD},CUSTOMER:democustomer:{DEMO_PASSWORD}` (ADMIN은 넣지 않음 — 빌드 결과에 그대로 보임)
-- 다시 만들려면: 데모 행을 지우고 재시작 (또는 Neon 브랜치 초기화)
+- **데모 계정(고객·사장님·관리자·신청자)은 비밀번호·이메일 변경 403 `DEMO_ACCOUNT_PROTECTED`** — 방문자 한 명이 바꾸면 데모가 깨지므로
+- 로그인 화면 "시연 계정으로 체험하기": 고객·사장님 체험하기는 아이디·공개 비밀번호를 채움(로그인은 직접), 관리자 체험하기는 바로 로그인. 목록은 서버 `GET /api/users/demo-accounts` → **Vercel 환경변수 불필요**, 관리자 비밀번호는 빌드 결과·응답 어디에도 없음
+- **데모 관리자 범위**: 데모 매장 정산·결제·수수료율, 데모 회원의 전환 신청만. Outbox는 403, 다른 방문자 데이터는 목록에서 빠지고 처리 시 403 `DEMO_ADMIN_SCOPE` (`docs/api.md` 배포 데모 체험)
+- **초기화**: 관리자 정산 관리 화면 "데모 데이터 초기화" 버튼(`POST /api/admin/demo-data/reset`, 데모 관리자도 가능) → 방문자가 확정·지급·승인·주문한 결과를 지우고 처음 상태로. 데모 회원은 남아 로그인 유지, 다른 방문자 매장은 그대로, 1분 간격 제한 (`docs/api.md` 배포 데모 체험)
+- 초기화는 결제·정산 기록 불변 원칙의 예외 — 실제 거래가 아닌 데모 매장 데이터만, `demo-data.enabled=true`일 때만(꺼진 배포는 404)
+- 회원까지 다시 만들려면: 데모 행을 지우고 재시작 (또는 Neon 브랜치 초기화)
+- 비밀번호는 정해진 값이 없음 — 배포하는 사람이 정해 Render에 넣음(8자 이상). 기록은 `.env`(git 제외), 변수 설명은 `.env.example` 끝 "배포 데모 데이터"
+- 배포 화면에 데모 데이터가 없으면 먼저 Render에 `DEMO_DATA_ENABLED=true`가 있는지 확인 (기본 `false`라 없으면 시드 빈 자체가 생기지 않음, 로그에 데모 관련 줄 0개)
 
 ### 9-7. 비밀번호 찾기·이메일 인증 메일 (Brevo)
 

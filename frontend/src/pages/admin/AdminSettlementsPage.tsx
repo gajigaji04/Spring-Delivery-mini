@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { adminApi } from '../../api/endpoints';
 import type { SettlementStatus } from '../../api/types';
 import { DelayedSpinner } from '../../components/DelayedSpinner';
+import { DemoResetPanel } from '../../components/DemoResetPanel';
 import { ErrorMessage } from '../../components/ErrorMessage';
 import { Money, settlementStatusLabel, StatusBadge } from '../../components/format';
 import { useAsync } from '../../hooks/useAsync';
@@ -35,6 +36,7 @@ export default function AdminSettlementsPage() {
   return (
     <section>
       <h1>정산 관리</h1>
+      <DemoResetPanel onDone={reload} />
       <div className="row">
         <input type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
         <select value={status} onChange={(e) => setStatus(e.target.value as SettlementStatus | '')}>
