@@ -17,6 +17,8 @@ export function App() {
         <Route path="signup" element={<P.signup />} />
         {/* 소셜 로그인·연결 결과 (V22) — 서버 OAuth2 콜백이 ?result= 또는 ?error=를 붙여 보냄 */}
         <Route path="oauth/callback" element={<P.oauthCallback />} />
+        {/* 비밀번호 찾기 (V23) — 메일 링크는 #token= 을 붙여 이 화면으로 옴 (토큰이 서버 로그에 남지 않도록 쿼리가 아닌 조각) */}
+        <Route path="password-reset" element={<P.passwordReset />} />
 
         <Route path="cart" element={<RequireRole roles={['CUSTOMER']}><P.cart /></RequireRole>} />
         <Route path="orders" element={<RequireRole roles={['CUSTOMER', 'OWNER']}><P.orders /></RequireRole>} />

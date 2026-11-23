@@ -62,3 +62,8 @@ springdoc:
     enabled: false
   swagger-ui:
     enabled: false
+
+# 메일 발송 (V23) — 기본 none(비밀번호 찾기 503). 쓰려면 MAIL_SENDER=brevo + BREVO_API_KEY·MAIL_FROM_ADDRESS·PASSWORD_RESET_URL
+# log는 재설정 링크(비밀 값)를 로그에 남기므로 prod에서 막음 (config.ProdProfileGuard)
+mail:
+  sender: ${MAIL_SENDER:none}

@@ -11,6 +11,7 @@ const loaders = {
   login: () => import('../pages/LoginPage'),
   signup: () => import('../pages/SignupPage'),
   oauthCallback: () => import('../pages/OAuthCallbackPage'),
+  passwordReset: () => import('../pages/PasswordResetPage'),
   cart: () => import('../pages/CartPage'),
   orders: () => import('../pages/OrdersPage'),
   orderDetail: () => import('../pages/OrderDetailPage'),

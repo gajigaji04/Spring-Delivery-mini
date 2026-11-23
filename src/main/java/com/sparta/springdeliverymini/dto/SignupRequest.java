@@ -1,6 +1,7 @@
 package com.sparta.springdeliverymini.dto;
 
 import com.sparta.springdeliverymini.entity.Role;
+import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
@@ -19,6 +20,16 @@ public record SignupRequest(
         // 선택값 — 생략하거나 CUSTOMER만 허용 (V17 승인제, OWNER·ADMIN은 UserService에서 400)
         // 사장님은 가입 후 POST /api/owner-applications로 신청 → 관리자 승인
         // 정의되지 않은 문자열은 JSON → enum 변환에 실패해 HttpMessageNotReadableException → 400
-        Role role
+        Role role,
+
+        // 선택값 (V23) — 비밀번호 찾기 메일을 받을 주소. 생략하면 나중에 내 정보에서 등록
+        @Email(message = "이메일 형식이 올바르지 않습니다.")
+        @Size(max = 255, message = "이메일은 255자 이하여야 합니다.")
+        String email
 ) {
+
+    // 이메일 없이 가입 (V23 이전 요청 형태)
+    public SignupRequest(String username, String password, Role role) {
+        this(username, password, role, null);
+    }
 }

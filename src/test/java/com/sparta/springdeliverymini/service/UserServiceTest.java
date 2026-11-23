@@ -1,10 +1,15 @@
 package com.sparta.springdeliverymini.service;
 
+import com.sparta.springdeliverymini.config.DemoDataProperties;
+import com.sparta.springdeliverymini.dto.EmailChangeRequest;
 import com.sparta.springdeliverymini.dto.MyInfoResponse;
+import com.sparta.springdeliverymini.dto.PasswordChangeRequest;
 import com.sparta.springdeliverymini.dto.SignupRequest;
 import com.sparta.springdeliverymini.entity.Role;
 import com.sparta.springdeliverymini.entity.User;
 import com.sparta.springdeliverymini.exception.ApiException;
+import com.sparta.springdeliverymini.exception.ErrorCode;
+import com.sparta.springdeliverymini.repository.PasswordResetTokenRepository;
 import com.sparta.springdeliverymini.repository.StoreRepository;
 import com.sparta.springdeliverymini.repository.UserRepository;
 import org.junit.jupiter.api.Test;
@@ -34,6 +39,8 @@ class UserServiceTest {
     @Mock private StoreRepository storeRepository;
     @Mock private PasswordEncoder passwordEncoder;
     @Mock private AuthTokenService authTokenService;
+    @Mock private PasswordResetTokenRepository passwordResetTokenRepository;
+    @Mock private DemoDataProperties demoDataProperties; // 기본 false → 공개 데모 계정 아님
 
     @InjectMocks
     private UserService userService;
@@ -108,5 +115,43 @@ class UserServiceTest {
         assertThatThrownBy(() -> userService.getMyInfo("deleted"))
                 .isInstanceOf(ApiException.class)
                 .extracting("status").isEqualTo(HttpStatus.UNAUTHORIZED);
+    }
+
+    // ===== 비밀번호·이메일 변경 (V23) =====
+
+    @Test
+    void 공개_데모_계정은_비밀번호를_바꿀_수_없다() {
+        User demo = new User("democustomer", "encoded", Role.CUSTOMER);
+        given(userRepository.findByUsernameForUpdate("democustomer")).willReturn(Optional.of(demo));
+        given(demoDataProperties.isPublicDemoAccount("democustomer")).willReturn(true);
+
+        assertThatThrownBy(() -> userService.changePassword("democustomer",
+                new PasswordChangeRequest("password123", "newpassword456"), null))
+                .isInstanceOf(ApiException.class)
+                .extracting("code").isEqualTo(ErrorCode.DEMO_ACCOUNT_PROTECTED);
+        assertThat(demo.getPassword()).isEqualTo("encoded");
+        verifyNoInteractions(authTokenService);
+    }
+
+    @Test
+    void 공개_데모_계정은_이메일을_바꿀_수_없다() {
+        given(userRepository.findByUsernameForUpdate("demoowner"))
+                .willReturn(Optional.of(new User("demoowner", "encoded", Role.OWNER)));
+        given(demoDataProperties.isPublicDemoAccount("demoowner")).willReturn(true);
+
+        assertThatThrownBy(() -> userService.changeEmail("demoowner",
+                new EmailChangeRequest("me@example.com", "password123")))
+                .isInstanceOf(ApiException.class)
+                .extracting("code").isEqualTo(ErrorCode.DEMO_ACCOUNT_PROTECTED);
+    }
+
+    @Test
+    void 비밀번호가_있는_회원은_현재_비밀번호가_없으면_이메일을_바꿀_수_없다() {
+        given(userRepository.findByUsernameForUpdate("customer1"))
+                .willReturn(Optional.of(new User("customer1", "encoded", Role.CUSTOMER)));
+
+        assertThatThrownBy(() -> userService.changeEmail("customer1", new EmailChangeRequest("me@example.com", null)))
+                .isInstanceOf(ApiException.class)
+                .extracting("code").isEqualTo(ErrorCode.INVALID_CURRENT_PASSWORD);
     }
 }

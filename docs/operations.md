@@ -276,10 +276,20 @@ prod DB는 빈 상태. 데모용 계정은 화면(API)으로 만든다
 | `CORS_ALLOWED_ORIGINS` | Vercel 주소 |
 | `JAVA_TOOL_OPTIONS` | `-XX:TieredStopAtLevel=1 -XX:+UseSerialGC -Xss512k -XX:MaxRAMPercentage=60` |
 | `PORT` | Render가 지정 (지정하지 않으면 8080) |
-| 소셜·토스 키 | 8장과 같음 (`SOCIAL_REDIRECT_BASE_URL` 등). `TOSS_MODE=fake`는 prod 점검이 막음 |
+| 소셜 로그인 | `KAKAO_CLIENT_ID`·`KAKAO_CLIENT_SECRET`·`GOOGLE_CLIENT_ID`·`GOOGLE_CLIENT_SECRET` — **없으면 `/api/users/social/providers`가 `[]`라 버튼이 안 보임** |
+| 소셜 주소 | `SOCIAL_REDIRECT_BASE_URL`=`https://{프론트}`, `SOCIAL_FRONTEND_CALLBACK_URL`=`https://{프론트}/oauth/callback` (키가 있으면 뒤쪽은 필수 — prod 점검) |
+| 토스 키 | 8장과 같음. `TOSS_MODE=fake`는 prod 점검이 막음 |
+| 비밀번호 찾기 (V23) | `MAIL_SENDER=brevo`, `BREVO_API_KEY`, `MAIL_FROM_ADDRESS`(Brevo에서 인증한 주소), `PASSWORD_RESET_URL`=`https://{프론트}/password-reset` — 비우면 `none`(비밀번호 찾기 503), brevo면 셋 다 필수 (prod 점검) |
+| 데모 데이터 | `DEMO_DATA_ENABLED=true`, `DEMO_PASSWORD`(공개), `DEMO_ADMIN_PASSWORD`(비공개) — 9-6 |
+
+`{프론트}`는 **Vercel 프로덕션 도메인**(`<프로젝트>.vercel.app`). 브랜치 미리보기 주소(`<프로젝트>-git-<브랜치>-<팀>.vercel.app`)는
+Vercel Authentication(Deployment Protection)으로 막혀 있어 외부 방문자·카카오·구글 콜백이 들어오지 못함(302 → Vercel 로그인).
+CORS·소셜·재설정 주소를 모두 같은 프로덕션 도메인으로 맞춤.
 
 Render 헬스체크 경로를 지정할 수 있으면 `/actuator/health/liveness` (외부 의존성과 무관 → DB 일시 장애로 재시작이 반복되지 않음).
-프론트(Vercel)는 8-4와 같고 `vercel.json`의 `API_DOMAIN`을 Render 주소로 바꿈.
+프론트(Vercel)는 8-4와 같고 `vercel.json`의 rewrite 대상 3곳을 Render 주소(`https://<서비스>.onrender.com`)로 바꿔 **main에 커밋**
+(Vercel은 저장소의 파일로 빌드 — 로컬 수정만으로는 반영되지 않음. 자리표시자 그대로면 `/api/*`가 백엔드에 닿지 않아 로그인·목록 모두 실패).
+Vercel 환경변수 `VITE_DEMO_ACCOUNTS`(9-6)는 빌드 때 들어가므로 바꾼 뒤 재배포.
 
 ### 9-3. 로컬 측정 (512MB · `--cpus` 상한, 2026-11-23)
 
@@ -317,3 +327,36 @@ Docker로 Render 무료 사양을 흉내 낸 값 — **Render 실제 CPU 배분�
 | Neon·Upstash 사용량 | 한 달 CU-시간·명령 수가 무료 한도 안인지 |
 | 정산 스케줄러 | 01:10에 절전 중이면 실행되지 않음 → 시연은 관리자 재집계 API로 |
 | 기능 | 8-7 표 (비공개 포트 항목 제외) + 결제 후 알림 생성·사장님 SSE 토스트 |
+| 소셜 버튼 | `https://{프론트}/api/users/social/providers`가 `["kakao","google"]` |
+| 비밀번호 찾기 | 가입 시 이메일 입력 → 로그인 화면 "비밀번호를 잊으셨나요?" → 메일 링크 → 새 비밀번호로 로그인, 다른 기기 로그아웃 |
+| 데모 데이터 | Render 로그 `데모 데이터 생성 완료`, 로그인 화면 데모 버튼으로 사장님·고객 로그인 |
+
+### 9-6. 데모 데이터 (`demo-data.*`, `maintenance.DemoDataSeeder`)
+
+배포 DB(Neon)는 새로 만든 빈 DB라 로컬에서 보던 테스트 데이터(로컬 PostgreSQL)가 없음. 로컬 데이터를 옮기지 않고 **기동 시 시드**로 만듦
+(재현 가능, DB를 갈아엎어도 다시 생김, 로컬 데이터는 그대로).
+
+| 만드는 것 | 내용 |
+|---|---|
+| 관리자 `demoadmin` | `DEMO_ADMIN_PASSWORD`가 있으면 로그인 가능, 없으면 비밀번호 NULL(승인 기록용, 로그인 불가). 같은 아이디가 이미 있으면 그대로 씀 |
+| 사장님 `demoowner` | 고객 가입 → 전환 신청 → `demoadmin` 승인 (V17 경로 그대로), 매장 2개(데모 치킨·데모 분식) + 메뉴 6개 |
+| 고객 `democustomer` | 주문 4건: 배달완료·수락·결제완료(수락 대기)·주문요청(결제 전) — 결제 3건은 모의 결제, 수수료는 `Payment` 생성자 계산 |
+
+- 멱등: `demoowner`가 있으면 아무것도 하지 않음. 한 트랜잭션이라 중간 실패 시 전부 롤백 → 다음 기동에 다시
+- 결제 완료 이벤트(Outbox)·알림은 만들지 않음 (지난 일을 기록하는 데이터). 정산은 다음 날 스케줄러 또는 관리자 재집계 API
+- **공개 계정(`demoowner`·`democustomer`)은 비밀번호·이메일 변경 403 `DEMO_ACCOUNT_PROTECTED`** — 방문자 한 명이 바꾸면 데모가 깨지므로
+- 로그인 화면 버튼: Vercel `VITE_DEMO_ACCOUNTS=OWNER:demoowner:{DEMO_PASSWORD},CUSTOMER:democustomer:{DEMO_PASSWORD}` (ADMIN은 넣지 않음 — 빌드 결과에 그대로 보임)
+- 다시 만들려면: 데모 행을 지우고 재시작 (또는 Neon 브랜치 초기화)
+
+### 9-7. 비밀번호 찾기 메일 (Brevo)
+
+Render Free는 SMTP 포트(25·465·587)로 나가는 연결을 막아 Gmail SMTP 등을 쓸 수 없음 → HTTPS API로 보내는 Brevo 사용
+(무료 하루 300통, 도메인 없이 발신 주소 1개 인증으로 발송 가능).
+
+1. app.brevo.com 가입 → Senders, Domains & Dedicated IPs → Senders에서 발신 주소 추가·인증 메일 확인
+2. SMTP & API → API Keys → 키 생성 → Render `BREVO_API_KEY`
+3. Render `MAIL_SENDER=brevo`, `MAIL_FROM_ADDRESS`(1의 주소), `PASSWORD_RESET_URL=https://{프론트}/password-reset`
+4. 확인: 가입(이메일 입력) → 비밀번호 찾기 → 메일 도착(스팸함 포함) → 링크 → 재설정. 실패는 Render 로그 `비밀번호 재설정 메일 발송 실패`
+
+- 무료 도메인 메일(gmail 등)을 발신 주소로 쓰면 받는 쪽 DMARC 정책 때문에 스팸함으로 갈 수 있음 — 시연 한계로 둠
+- 로컬은 `MAIL_SENDER` 기본 `log` → 링크가 앱 로그에 찍힘 (prod에서 log는 기동 실패)

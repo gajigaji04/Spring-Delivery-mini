@@ -34,6 +34,26 @@ public interface RefreshTokenRepository extends JpaRepository<RefreshToken, Long
     int revokeFamily(@Param("familyId") UUID familyId, @Param("now") LocalDateTime now,
                      @Param("reason") RefreshTokenRevokeReason reason);
 
+    // 회원의 유효한 Refresh Token 전체 폐기 (V23 비밀번호 재설정 — 링크로 바꿨으므로 모든 로그인을 끊음)
+    @Modifying(flushAutomatically = true)
+    @Query("""
+            UPDATE RefreshToken t SET t.revokedAt = :now, t.revokeReason = :reason
+            WHERE t.userId = :userId AND t.revokedAt IS NULL
+            """)
+    int revokeAllOfUser(@Param("userId") Long userId, @Param("now") LocalDateTime now,
+                        @Param("reason") RefreshTokenRevokeReason reason);
+
+    // 회원의 유효한 Refresh Token 중 keepFamilyId 계열만 남기고 폐기 (V23 로그인 상태의 비밀번호 변경)
+    // 비밀번호를 바꾼 지금 기기의 로그인은 유지하고, 다른 기기·브라우저의 로그인은 끊음 (idx_refresh_tokens_user_active)
+    // null 비교 분기를 쿼리에 넣지 않고 메서드를 나눔 — UUID 파라미터가 null이면 PostgreSQL이 타입을 추론하지 못함
+    @Modifying(flushAutomatically = true)
+    @Query("""
+            UPDATE RefreshToken t SET t.revokedAt = :now, t.revokeReason = :reason
+            WHERE t.userId = :userId AND t.revokedAt IS NULL AND t.familyId <> :keepFamilyId
+            """)
+    int revokeAllOfUserExceptFamily(@Param("userId") Long userId, @Param("keepFamilyId") UUID keepFamilyId,
+                                    @Param("now") LocalDateTime now, @Param("reason") RefreshTokenRevokeReason reason);
+
     // 보관 기간 정리 (V16, maintenance.RetentionCleaner) — 만료 시각이 before보다 이전인 행을 limit건씩 삭제
     // 만료된 토큰은 재발급에 쓸 수 없으므로 지워도 동작이 바뀌지 않음 (지운 값이 다시 오면 모르는 값으로 거부)
     // 재발급 중인 행(FOR UPDATE)은 SKIP LOCKED로 건너뜀 — 다른 테이블 정리와 같은 방식

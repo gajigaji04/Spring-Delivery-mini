@@ -13,9 +13,13 @@ public record MyInfoResponse(
         String username,
         Role role,
         LocalDateTime createdAt, // 가입 시각 — 별도 표시 이름(닉네임) 컬럼이 없어 화면 표시는 username 사용
-        List<Long> storeIds) {   // OWNER의 매장 id (id 오름차순), 그 밖의 역할은 빈 배열
+        List<Long> storeIds,     // OWNER의 매장 id (id 오름차순), 그 밖의 역할은 빈 배열
+        String email,            // 비밀번호 찾기 메일 주소 (V23), 없으면 null
+        boolean hasPassword,     // false면 소셜 전용 회원 — 비밀번호 변경 화면이 "현재 비밀번호" 없이 설정으로 바뀜
+        boolean demoAccount) {   // 공개 데모 계정 — 비밀번호·이메일 변경 불가 (화면에서 폼을 숨김)
 
-    public static MyInfoResponse of(User user, List<Long> storeIds) {
-        return new MyInfoResponse(user.getId(), user.getUsername(), user.getRole(), user.getCreatedAt(), storeIds);
+    public static MyInfoResponse of(User user, List<Long> storeIds, boolean demoAccount) {
+        return new MyInfoResponse(user.getId(), user.getUsername(), user.getRole(), user.getCreatedAt(), storeIds,
+                user.getEmail(), user.hasPassword(), demoAccount);
     }
 }

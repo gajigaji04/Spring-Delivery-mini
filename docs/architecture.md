@@ -175,7 +175,12 @@ src/main/java/com/sparta/springdeliverymini
 │   ├── SocialLoginRedirects.java        # 프론트 콜백 주소(설정값)에 결과 쿼리
 │   └── NoOpAuthorizedClientRepository.java # 공급자 Access Token 보관 안 함
 ├── maintenance
-│   └── RetentionCleaner.java            # 보관 기간이 지난 발행 완료 이벤트·처리 기록·멱등성 기록 삭제 (V14), 만료된 Refresh Token (V16)
+│   ├── RetentionCleaner.java            # 보관 기간이 지난 발행 완료 이벤트·처리 기록·멱등성 기록 삭제 (V14), 만료된 Refresh Token (V16)
+│   └── DemoDataSeeder.java              # 배포 데모 데이터 (demo-data.enabled=true일 때만, 한 번만 생성)
+├── mail
+│   ├── EmailSender.java                 # 발송 채널 인터페이스 (MailConfig가 none·log·brevo 중 하나 등록)
+│   ├── LoggingEmailSender.java / BrevoEmailSender.java # 로그 출력(로컬) / Brevo HTTPS API (V23)
+│   └── PasswordResetMailer.java         # 재설정 메일을 커밋 뒤 전용 스레드에서 발송
 ├── lock
 │   ├── DistributedLock.java             # 인스턴스 간 실행 락 인터페이스 (#41)
 │   ├── RedisDistributedLock.java        # Redis 구현 — SET NX PX 획득, token 확인 후 해제(Lua), 최소 유지 시간
@@ -608,6 +613,24 @@ Refresh Token이 쿠키라 다른 사이트가 재발급·로그아웃을 위조
   - V16 이전 계열은 첫 발급 + 30일로 백필하되, 이미 더 늦게 만료되는 토큰이 있으면 그 시각까지 (발급된 토큰을 앞당겨 끊지 않음)
   - 쿠키 `Max-Age`는 계속 14일 — 절대 만료에 가까우면 쿠키가 서버 기록보다 늦게 사라지지만, 서버가 `REFRESH_TOKEN_EXPIRED`로 거부하며 쿠키를 지움
 - **다른 사이트 배포**: 프론트·API의 등록 도메인이 다르면 `SameSite=None` 필요 → CSRF 방어가 CORS(Origin 검사)에만 의존하게 됨
+
+### 비밀번호 재설정·변경 (V23)
+- **찾기(이메일 재설정 링크)**: 이메일 → 가입된 주소면 무작위 256비트 토큰 링크(`{PASSWORD_RESET_URL}#token=`, 30분, 1회용)를 메일로
+  - 응답은 가입 여부와 관계없이 항상 202, 메일은 **커밋 뒤 전용 스레드**(`mail.PasswordResetMailer`)에서 발송 → 응답 본문·시간으로 가입 여부를 알 수 없음
+  - 토큰은 SHA-256 해시만 저장(Refresh Token과 같은 방식), 재설정은 행 `FOR UPDATE`로 링크 1개당 1번만 성공
+  - 토큰을 쿼리가 아니라 `#` 조각에 둠 — 조각은 서버로 전송되지 않아 Vercel·Render 접근 로그·Referer에 남지 않음. 프론트는 읽은 뒤 주소창에서 지움
+  - 남용 방지: 같은 회원에게 1분 안에 재발송하지 않음(회원 행 잠금 안에서 확인), 새 링크를 보내면 이전 링크 무효
+  - 재설정하면 그 회원의 **모든** Refresh Token 계열 폐기(`PASSWORD_CHANGED`) — 비밀번호가 새었을 수 있는 상황
+  - Redis 미사용: 비밀번호를 바꾸는 권한이라 DB 행·제약으로 판단 ("Redis는 보조 수단")
+- **메일 발송 채널** (`mail.sender`): `none`(prod 기본 → 비밀번호 찾기 503) / `log`(로컬·테스트, 링크를 로그로 — prod 기동 실패) / `brevo`(HTTPS API)
+  - SMTP가 아닌 이유: Render Free가 SMTP 포트를 막음. 실패는 로그만 남기고 재시도하지 않음(사용자가 다시 요청)
+- **변경**: 비밀번호가 있으면 현재 비밀번호 확인(틀리면 400 `INVALID_CURRENT_PASSWORD` — 401이면 프론트가 토큰 만료로 보고 재발급함)
+  - 소셜 전용 회원은 현재 비밀번호 없이 첫 설정 (V22 후속 "소셜 전용 회원 비밀번호 설정")
+  - Refresh 쿠키(Path=/api/users)로 **지금 기기의 계열만 남기고** 나머지 계열 폐기
+- **이메일 등록·변경**: 비밀번호가 있으면 현재 비밀번호 확인 — Access Token만 훔친 사람이 주소를 바꿔 재설정으로 계정을 가져가지 못하도록
+  - 한계: 주소 소유 확인 메일이 없음 → 남의 주소를 먼저 등록하면 그 주소의 주인이 같은 주소를 등록할 수 없음 (재설정 링크는 실제 주인에게 가므로 계정 탈취는 아님)
+- **공개 데모 계정**(`demo-data.*`, `docs/operations.md` 9-6)은 비밀번호·이메일 변경 403 `DEMO_ACCOUNT_PROTECTED`
+- 이미 발급된 Access Token은 변경·재설정 뒤에도 만료(최대 15분)까지 유효 — 로그아웃과 같은 한계
 
 ### 역할 부여 — 사장님 승인제 (V17)
 - 가입은 `CUSTOMER`만 (`role` 선택값, `OWNER`·`ADMIN` 400). `OWNER`는 신청(`owner_applications`) → 관리자 승인으로만, `ADMIN`은 DB에서 직접 지정

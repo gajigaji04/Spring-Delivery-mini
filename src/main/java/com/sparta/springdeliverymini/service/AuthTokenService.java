@@ -123,6 +123,24 @@ public class AuthTokenService {
                         RefreshTokenRevokeReason.LOGOUT));
     }
 
+    // 비밀번호 변경·재설정 (V23) — 이 회원의 다른 로그인을 모두 폐기, currentRawToken 계열(지금 기기)만 유지
+    // currentRawToken이 없거나 이 회원의 유효한 토큰이 아니면 전부 폐기 (남길 로그인을 확인할 수 없으므로 안전한 쪽)
+    // 이미 발급된 Access Token은 만료(jwt.expiration-ms)까지 유효 — 로그아웃과 같은 한계 (docs/architecture.md 인증 장)
+    @Transactional(propagation = Propagation.MANDATORY)
+    public int revokeOtherSessions(Long userId, String currentRawToken) {
+        LocalDateTime now = LocalDateTime.now(clock);
+        RefreshToken current = currentRawToken == null || !TOKEN_FORMAT.matcher(currentRawToken).matches()
+                ? null
+                : refreshTokenRepository.findByTokenHashForUpdate(hash(currentRawToken))
+                        .filter(t -> t.getUserId().equals(userId) && !t.isRevoked() && !t.isExpired(now))
+                        .orElse(null);
+        if (current == null) {
+            return refreshTokenRepository.revokeAllOfUser(userId, now, RefreshTokenRevokeReason.PASSWORD_CHANGED);
+        }
+        return refreshTokenRepository.revokeAllOfUserExceptFamily(userId, current.getFamilyId(), now,
+                RefreshTokenRevokeReason.PASSWORD_CHANGED);
+    }
+
     private RefreshToken findForUpdate(String rawToken) {
         // 형식이 다르면 DB 조회 없이 거부 (모르는 값과 같은 응답 — 형식 정보를 따로 알려주지 않음)
         if (rawToken == null || !TOKEN_FORMAT.matcher(rawToken).matches()) {

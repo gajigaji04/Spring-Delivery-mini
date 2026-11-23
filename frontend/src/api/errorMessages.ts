@@ -41,6 +41,13 @@ const CODE_MESSAGES: Record<string, string> = {
   INVALID_REFUND_AMOUNT: '환불 금액이 남은 결제 금액보다 큽니다.',
   PG_RESULT_UNKNOWN: '결제 결과를 확인하고 있습니다. 결제창을 다시 열지 말고 잠시 후 다시 확인해 주세요.',
 
+  // 비밀번호·이메일 (V23)
+  INVALID_CURRENT_PASSWORD: '현재 비밀번호가 올바르지 않습니다.',
+  PASSWORD_RESET_TOKEN_INVALID: '링크가 만료되었거나 이미 사용되었습니다. 비밀번호 찾기를 다시 요청해 주세요.',
+  EMAIL_ALREADY_USED: '이미 다른 계정에서 사용 중인 이메일입니다.',
+  DEMO_ACCOUNT_PROTECTED: '공개 데모 계정은 비밀번호·이메일을 바꿀 수 없습니다.',
+  PASSWORD_RESET_UNAVAILABLE: '지금은 비밀번호 찾기를 사용할 수 없습니다. 관리자에게 문의해 주세요.',
+
   // 소셜 로그인 (V22) — API 오류 code와 /oauth/callback?error= 값이 같음
   SOCIAL_PROVIDER_NOT_SUPPORTED: '지금은 이 소셜 로그인을 사용할 수 없습니다.',
   SOCIAL_LINK_FORBIDDEN: '관리자 계정은 소셜 계정을 연결할 수 없습니다.',

@@ -1,13 +1,18 @@
 package com.sparta.springdeliverymini.service;
 
 import lombok.RequiredArgsConstructor;
+import com.sparta.springdeliverymini.config.DemoDataProperties;
+import com.sparta.springdeliverymini.dto.EmailChangeRequest;
 import com.sparta.springdeliverymini.dto.LoginRequest;
 import com.sparta.springdeliverymini.dto.MyInfoResponse;
+import com.sparta.springdeliverymini.dto.PasswordChangeRequest;
 import com.sparta.springdeliverymini.dto.SignupRequest;
 import com.sparta.springdeliverymini.dto.UserResponse;
 import com.sparta.springdeliverymini.entity.Role;
 import com.sparta.springdeliverymini.entity.User;
 import com.sparta.springdeliverymini.exception.ApiException;
+import com.sparta.springdeliverymini.exception.ErrorCode;
+import com.sparta.springdeliverymini.repository.PasswordResetTokenRepository;
 import com.sparta.springdeliverymini.repository.StoreRepository;
 import com.sparta.springdeliverymini.repository.UserRepository;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -16,7 +21,10 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Clock;
+import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Objects;
 
 @Service
 @Transactional(readOnly = true) // 기본은 읽기 전용, 저장이 필요한 메서드만 @Transactional로 덮어씀
@@ -27,6 +35,9 @@ public class UserService {
     private final StoreRepository storeRepository; // 내 정보 조회의 OWNER 매장 id 목록 (#62)
     private final PasswordEncoder passwordEncoder; // SecurityConfig에 등록한 BCryptPasswordEncoder
     private final AuthTokenService authTokenService; // 로그인 성공 시 Access·Refresh Token 발급
+    private final PasswordResetTokenRepository passwordResetTokenRepository; // 비밀번호·이메일 변경 시 재설정 링크 무효화 (V23)
+    private final DemoDataProperties demoDataProperties; // 공개 데모 계정은 비밀번호·이메일 변경 불가
+    private final Clock clock;
 
     @Transactional
     public UserResponse signup(SignupRequest request) {
@@ -45,6 +56,11 @@ public class UserService {
         if (userRepository.existsByUsername(request.username())) {
             throw new ApiException(HttpStatus.CONFLICT, "이미 사용 중인 아이디입니다.");
         }
+        // 이메일(선택, V23) 중복 — 한 주소 = 한 회원 (재설정 링크가 어느 회원 것인지 하나로 정해지도록)
+        String email = User.normalizeEmail(request.email());
+        if (email != null && userRepository.existsByEmail(email)) {
+            throw emailAlreadyUsed();
+        }
 
         // 2. 비밀번호 암호화
         // 평문 그대로 저장하지 않고 BCrypt 해시로 변환해서 저장
@@ -54,6 +70,7 @@ public class UserService {
         // 3. 회원 생성
         // 가입 회원은 항상 CUSTOMER (위에서 다른 값은 거절)
         User user = new User(request.username(), encodedPassword, Role.CUSTOMER);
+        user.changeEmail(email);
 
         // 4. DB에 저장
         // 동시에 같은 아이디로 가입하면 1번 검사를 둘 다 통과할 수 있음
@@ -61,6 +78,8 @@ public class UserService {
         try {
             userRepository.saveAndFlush(user);
         } catch (DataIntegrityViolationException e) {
+            // 동시에 같은 아이디(또는 같은 이메일)로 가입 — 어느 쪽인지 제약 이름까지 보지 않고 아이디 기준 문구
+            // (이메일을 함께 보낸 경우 드묾, 사전 검사가 대부분을 문구별로 걸러냄)
             throw new ApiException(HttpStatus.CONFLICT, "이미 사용 중인 아이디입니다.");
         }
 
@@ -83,7 +102,7 @@ public class UserService {
                 ? storeRepository.findIdsByOwnerId(user.getId())
                 : List.of();
 
-        return MyInfoResponse.of(user, storeIds);
+        return MyInfoResponse.of(user, storeIds, demoDataProperties.isPublicDemoAccount(user.getUsername()));
     }
 
     // 쓰기 트랜잭션: Refresh Token 행을 저장함 (클래스 기본값은 읽기 전용)
@@ -108,5 +127,75 @@ public class UserService {
         // Refresh Token: 새 계열(로그인 1번)로 DB에 해시 저장, 원문은 컨트롤러가 HttpOnly 쿠키로 내려보냄
         // 로그인할 때마다 계열이 새로 생김 → 기기·브라우저별 로그인이 서로 영향 없음 (로그아웃도 그 계열만)
         return authTokenService.issue(user);
+    }
+
+    // 비밀번호 변경·설정 (V23) — 로그인한 회원 본인
+    // - 비밀번호가 있으면 현재 비밀번호 확인 (Access Token만 훔친 사람이 비밀번호를 바꿔 계정을 가져가지 못하도록)
+    // - 소셜 전용 회원(비밀번호 없음, V22)은 현재 비밀번호 없이 첫 설정 → 이후 아이디·비밀번호 로그인 가능
+    // - 성공하면 재설정 링크 무효화 + 지금 기기(currentRefreshToken 계열) 외 모든 로그인 폐기
+    @Transactional
+    public void changePassword(String username, PasswordChangeRequest request, String currentRefreshToken) {
+        User user = findForUpdate(username);
+        rejectPublicDemoAccount(user);
+        verifyCurrentPassword(user, request.currentPassword());
+
+        LocalDateTime now = LocalDateTime.now(clock);
+        user.changePassword(passwordEncoder.encode(request.newPassword()));
+        passwordResetTokenRepository.invalidateActive(user.getId(), now);
+        authTokenService.revokeOtherSessions(user.getId(), currentRefreshToken);
+    }
+
+    // 이메일 등록·변경 (V23) — 비밀번호가 있으면 현재 비밀번호 확인 (EmailChangeRequest 주석)
+    // 주소 소유 확인 메일은 보내지 않음: 남의 주소를 등록해도 재설정 링크가 그 주소로 갈 뿐 이 계정을 넘겨주지 않음
+    //   (한계: 다른 사람이 내 주소를 먼저 등록하면 나는 그 주소를 못 씀 — docs/architecture.md 인증 장)
+    @Transactional
+    public MyInfoResponse changeEmail(String username, EmailChangeRequest request) {
+        User user = findForUpdate(username);
+        rejectPublicDemoAccount(user);
+        verifyCurrentPassword(user, request.currentPassword());
+
+        String email = User.normalizeEmail(request.email());
+        if (!Objects.equals(email, user.getEmail())) {
+            if (userRepository.existsByEmail(email)) {
+                throw emailAlreadyUsed();
+            }
+            user.changeEmail(email);
+            try {
+                userRepository.saveAndFlush(user);
+            } catch (DataIntegrityViolationException e) {
+                // 동시에 같은 주소를 등록 — DB UNIQUE가 최종 근거
+                throw emailAlreadyUsed();
+            }
+            // 이전 주소로 보낸 링크는 더 쓸 수 없게 함 (flush 뒤에 실행 — 이 UPDATE의 자동 flush에서 제약 위반이 나지 않도록)
+            passwordResetTokenRepository.invalidateActive(user.getId(), LocalDateTime.now(clock));
+        }
+        return getMyInfo(username);
+    }
+
+    private User findForUpdate(String username) {
+        return userRepository.findByUsernameForUpdate(username)
+                .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "존재하지 않는 회원입니다."));
+    }
+
+    // 공개 데모 계정은 방문자 모두가 쓰므로 한 사람이 비밀번호·이메일을 바꾸면 데모가 깨짐
+    private void rejectPublicDemoAccount(User user) {
+        if (demoDataProperties.isPublicDemoAccount(user.getUsername())) {
+            throw new ApiException(HttpStatus.FORBIDDEN, ErrorCode.DEMO_ACCOUNT_PROTECTED,
+                    "공개 데모 계정은 비밀번호·이메일을 바꿀 수 없습니다.");
+        }
+    }
+
+    private void verifyCurrentPassword(User user, String currentPassword) {
+        if (!user.hasPassword()) {
+            return;
+        }
+        if (currentPassword == null || !passwordEncoder.matches(currentPassword, user.getPassword())) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, ErrorCode.INVALID_CURRENT_PASSWORD,
+                    "현재 비밀번호가 올바르지 않습니다.");
+        }
+    }
+
+    private static ApiException emailAlreadyUsed() {
+        return new ApiException(HttpStatus.CONFLICT, ErrorCode.EMAIL_ALREADY_USED, "이미 사용 중인 이메일입니다.");
     }
 }

@@ -19,6 +19,8 @@ import java.util.List;
 // - Flyway 자동 baseline이 켜져 있으면 기동 실패 (application-prod.yml)
 // - 알림 발송 채널이 slack(notification.sender)인데 SLACK_WEBHOOK_URL이 비어 있으면 기동 실패 (#69)
 // - 소셜 로그인 키(KAKAO_CLIENT_ID·GOOGLE_CLIENT_ID)가 있는데 SOCIAL_FRONTEND_CALLBACK_URL이 비어 있으면 기동 실패 (V22)
+// - 메일 발송(V23)이 brevo인데 BREVO_API_KEY·MAIL_FROM_ADDRESS·PASSWORD_RESET_URL 중 하나라도 비어 있으면 기동 실패,
+//   log면 기동 실패 (비밀번호 재설정 링크가 로그에 남음)
 // - 가짜 PG(toss.payments.mode=fake)면 기동 실패 — 운영에서 돈을 받지 않고 결제를 승인한 것처럼 기록하지 않도록
 // 오류 메시지에는 변수 이름만 넣고 값은 넣지 않음 (로그에 비밀 값이 남지 않도록)
 // 빈이 아니라 EnvironmentPostProcessor(META-INF/spring.factories 등록)로 검사 (#61):
@@ -38,6 +40,8 @@ ProdProfileGuard implements EnvironmentPostProcessor, Ordered {
 
     static final String SOCIAL_FRONTEND_CALLBACK_URL = "SOCIAL_FRONTEND_CALLBACK_URL";
     static final List<String> SOCIAL_CLIENT_IDS = List.of("KAKAO_CLIENT_ID", "GOOGLE_CLIENT_ID");
+
+    static final List<String> BREVO_REQUIRED_ENV = List.of("BREVO_API_KEY", "MAIL_FROM_ADDRESS", "PASSWORD_RESET_URL");
 
     // spring.flyway.baseline-on-migrate: 잘못된 DB(이력 테이블 없이 테이블만 있는 DB)에 붙었을 때 V1을 적용 완료로 기록하고 진행하지 않도록
     static final List<String> MUST_BE_DISABLED = List.of(
@@ -73,6 +77,13 @@ ProdProfileGuard implements EnvironmentPostProcessor, Ordered {
         if (usesSocialLogin(environment) && !StringUtils.hasText(environment.getProperty(SOCIAL_FRONTEND_CALLBACK_URL))) {
             missing.add(SOCIAL_FRONTEND_CALLBACK_URL);
         }
+        // 메일 발송을 brevo로 고른 경우 — 링크 주소가 기본값(localhost:5173)이면 메일의 링크가 열리지 않음
+        String mailSender = environment.getProperty("mail.sender", "none").trim();
+        if ("brevo".equalsIgnoreCase(mailSender)) {
+            BREVO_REQUIRED_ENV.stream()
+                    .filter(name -> !StringUtils.hasText(environment.getProperty(name)))
+                    .forEach(missing::add);
+        }
         if (!missing.isEmpty()) {
             problems.add("필수 환경변수가 없습니다: " + String.join(", ", missing));
         }
@@ -82,6 +93,10 @@ ProdProfileGuard implements EnvironmentPostProcessor, Ordered {
                 .toList();
         if (!enabled.isEmpty()) {
             problems.add("운영 프로필에서는 비활성이어야 합니다: " + String.join(", ", enabled));
+        }
+
+        if ("log".equalsIgnoreCase(mailSender)) {
+            problems.add("운영 프로필에서는 mail.sender=log를 쓸 수 없습니다 (비밀번호 재설정 링크가 로그에 남음)");
         }
 
         // 가짜 PG는 토스에 접속하지 않고 결제를 승인한 것처럼 기록함 → 운영에서 켜지면 돈을 받지 않고 주문이 진행됨 (V21)

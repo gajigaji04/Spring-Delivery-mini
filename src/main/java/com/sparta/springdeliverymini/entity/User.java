@@ -28,6 +28,11 @@ public class User extends BaseEntity {
     @Column(nullable = false)
     private Role role;
 
+    // 비밀번호 재설정 링크를 받는 주소 (V23). 없으면 null — 비밀번호 찾기를 쓸 수 없음
+    // 항상 정규화(앞뒤 공백 제거·소문자)해서 저장: DB CHECK(email = lower(email)) + UNIQUE로 한 주소 = 한 회원
+    @Column(unique = true)
+    private String email;
+
     public User(String username, String password, Role role) {
         this.username = username;
         this.password = password;
@@ -37,6 +42,27 @@ public class User extends BaseEntity {
     // 소셜 로그인 첫 가입 (V22) — 가입 경로와 같이 항상 CUSTOMER, 비밀번호 없음
     public static User socialCustomer(String username) {
         return new User(username, null, Role.CUSTOMER);
+    }
+
+    // 이메일 등록·변경 (V23) — 형식 검사는 요청 DTO(@Email), 중복은 DB UNIQUE가 최종 근거
+    public void changeEmail(String email) {
+        this.email = normalizeEmail(email);
+    }
+
+    // 비밀번호 변경·재설정·소셜 전용 회원의 첫 설정 (V23) — 인코딩된 해시만 받음 (평문은 엔티티에 들어오지 않음)
+    public void changePassword(String encodedPassword) {
+        if (encodedPassword == null || encodedPassword.isBlank()) {
+            throw new IllegalArgumentException("비밀번호 해시가 필요합니다.");
+        }
+        this.password = encodedPassword;
+    }
+
+    // 조회·저장에 같은 규칙을 쓰도록 공개 (재설정 요청의 이메일 조회도 이 값으로)
+    public static String normalizeEmail(String email) {
+        if (email == null || email.isBlank()) {
+            return null;
+        }
+        return email.strip().toLowerCase(java.util.Locale.ROOT);
     }
 
     public boolean hasPassword() {

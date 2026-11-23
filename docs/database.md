@@ -30,6 +30,7 @@
 | `V20__add_toss_payments.sql` | 토스페이먼츠 테스트 모드: `payments`에 PG 승인 정보 4컬럼(`pg_provider`·`pg_payment_key` UNIQUE·`pg_order_id` UNIQUE·`pg_approved_at`, 모두 NULL 허용 → 기존 결제·모의 결제는 NULL, 넷은 함께 있거나 함께 없음 CHECK), PG 결제 취소 요청 `pg_cancel_requests`(취소 금액·반영 후 잔액 `balance_after`, 환불 1건당 1행·전액 취소는 결제 키당 1행) |
 | `V21__add_partial_refunds.sql` | 부분 환불: `payment_refunds`(결제 1 : 환불 N) 생성, `payments.refunded_amount`·상태 `PARTIALLY_REFUNDED`(상태↔누적 환불액 CHECK), 기존 전액 환불을 환불 1건씩으로 **백필**하고 `settlement_refunds`를 `payment_refund_id`(UNIQUE)로 연결, `payment_id` UNIQUE 제거, 쓰지 않게 된 `idx_payments_refunded_at` 삭제. 주문 1 : 결제 1(`order_id` UNIQUE)은 유지 (`PartialRefundMigrationTest`) |
 | `V22__add_social_accounts.sql` | 소셜 로그인: `users.password` NOT NULL 해제(소셜 전용 회원은 NULL, 기존 행 변경 없음), `social_accounts`(FK → users, `(provider, provider_user_id)`·`(user_id, provider)` UNIQUE) |
+| `V23__add_user_email_and_password_reset_tokens.sql` | 비밀번호 찾기·변경: `users.email`(NULL 허용, UNIQUE, 소문자 CHECK — 기존 행 변경 없음), `password_reset_tokens`(FK → users, `token_hash` UNIQUE, `(user_id, created_at)` 인덱스), `refresh_tokens.revoke_reason`에 `PASSWORD_CHANGED` 추가, `idx_refresh_tokens_user_active (user_id) WHERE revoked_at IS NULL` |
 | `V18__split_order_delivery_address.sql` | 배송 주소 분리(#77): `orders.zip_code varchar(5)`·`road_address varchar(150)`·`detail_address varchar(100)` 추가(NULL 허용, 기본값 없음 → 기존 행 재작성 없음) + `orders_address_parts_check`(셋 다 NULL이거나, 우편번호 숫자 5자리 + 도로명 있음). 기존 주문은 `delivery_address`만 유지하고 세 컬럼은 NULL(백필 안 함 — 한 줄 주소를 안전하게 나눌 수 없음) |
 
 - **빈 DB**: 애플리케이션 기동 시 V1부터 순서대로 실행
@@ -61,6 +62,7 @@
 | username | varchar(20) | NOT NULL, UNIQUE | 로그인 아이디 |
 | password | varchar(255) | NULL 허용 (V22) | BCrypt 해시값. 소셜 전용 회원은 NULL → 아이디·비밀번호 로그인 불가 |
 | role | varchar(255) | NOT NULL | `CUSTOMER` / `OWNER` / `ADMIN`. 가입은 `CUSTOMER`만(V17), `OWNER`는 사장님 전환 승인으로만(`owner_applications`), `ADMIN`은 DB에서 직접 지정 |
+| email | varchar(255) | NULL 허용, UNIQUE `uk_users_email`, CHECK 소문자 (V23) | 비밀번호 찾기 메일 주소. 앞뒤 공백 제거·소문자로 저장 → 한 주소 = 한 회원 |
 | created_at | timestamp | | 가입 시각 (BaseEntity, 이후 변경 불가) |
 | updated_at | timestamp | | 마지막 정보 수정 시각 (BaseEntity) |
 
@@ -385,6 +387,18 @@
 
 > 제약: `uk_social_accounts_provider_user (provider, provider_user_id)` — 같은 소셜 계정 중복 가입 방지(동시 첫 로그인의 최종 근거), `uk_social_accounts_user_provider (user_id, provider)` — 회원당 공급자별 1개, 회원별 조회 인덱스 겸용
 > 연결 후 바뀌는 값 없음 (해제 = 행 삭제). 통합 테스트는 `social_accounts`를 users보다 먼저 삭제
+
+### password_reset_tokens — 비밀번호 재설정 링크 (V23)
+| 컬럼 | 타입 | 제약 | 설명 |
+|---|---|---|---|
+| id | bigint | PK | |
+| user_id | bigint | NOT NULL, FK → users | |
+| token_hash | varchar(64) | NOT NULL, UNIQUE | 링크 토큰의 SHA-256(hex) — 원문은 메일에만 |
+| created_at · expires_at | timestamp(6) | NOT NULL, CHECK `expires_at > created_at` | 발급 시각·만료(발급 + 30분) |
+| used_at | timestamp(6) | NULL 허용 | 더 쓸 수 없게 된 시각 — 재설정 사용·새 링크 발급·비밀번호/이메일 변경 |
+
+> 인덱스: `idx_password_reset_tokens_user_created (user_id, created_at)` — 재요청 간격(1분) 확인·쓸 수 있는 링크 무효화
+> 통합 테스트는 `password_reset_tokens`를 users보다 먼저 삭제. 만료 행 정리는 아직 없음(행이 작고 요청 간격 제한이 있어 후속)
 
 ## 결제 연관관계: `@OneToOne` vs `@ManyToOne`
 

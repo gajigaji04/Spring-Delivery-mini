@@ -12,7 +12,7 @@
 | 정산 | 확정·지급된 기록은 고치지 않고 환불을 다음 정산에서 차감·이월, 회계 항등식을 테스트로 고정 |
 | 이벤트 | Transactional Outbox + 멱등 Consumer + DLT 재처리 → Kafka가 멈춰도 결제는 성공하고 이벤트는 회복 후 발행 |
 | 장애 분석 | SSE 연결이 DB 커넥션을 쥐던 문제(open-in-view) → 연결 유지 중 활성 커넥션 0, Redis 장애 응답 4~9초 → 1.02초(Netty DNS 조회 원인) |
-| 검증 | 테스트 108개 클래스 946건(Testcontainers PostgreSQL·Redis·Kafka), k6 부하 테스트, Prometheus 알림 규칙 발동 확인 |
+| 검증 | 테스트 112개 클래스 973건(Testcontainers PostgreSQL·Redis·Kafka) + 프론트 80건, k6 부하 테스트, Prometheus 알림 규칙 발동 확인 |
 
 ## 화면
 로컬 compose(가짜 PG 모드)와 더미 데이터로 찍은 화면입니다 (2026-11-22).
@@ -61,7 +61,7 @@ flowchart LR
 ## 주요 기능
 | 영역 | 내용 |
 |---|---|
-| 회원 | 회원가입·로그인, BCrypt, JWT 인증(Access 15분) + Refresh Token(HttpOnly 쿠키, DB에 해시만, 재발급마다 교체·재사용 감지 시 로그인 전체 폐기, 로그인 후 30일 절대 만료, 로그아웃), 401 만료·위조 구분(`code`), CUSTOMER / OWNER / ADMIN 역할 (가입은 CUSTOMER만, OWNER는 사장님 전환 신청 → 관리자 승인, ADMIN은 DB에서만 지정 — V17), 내 정보 조회(DB 기준 역할, OWNER는 본인 매장 id 목록), 카카오·구글 소셜 로그인(처음이면 고객 가입, 기존 회원은 로그인 후 직접 연결 — 이메일로 자동 연결하지 않음, V22), 브라우저 호출용 CORS(허용 출처는 `CORS_ALLOWED_ORIGINS`, 자격 증명은 Refresh Token 쿠키용) |
+| 회원 | 회원가입·로그인, BCrypt, JWT 인증(Access 15분) + Refresh Token(HttpOnly 쿠키, DB에 해시만, 재발급마다 교체·재사용 감지 시 로그인 전체 폐기, 로그인 후 30일 절대 만료, 로그아웃), 401 만료·위조 구분(`code`), CUSTOMER / OWNER / ADMIN 역할 (가입은 CUSTOMER만, OWNER는 사장님 전환 신청 → 관리자 승인, ADMIN은 DB에서만 지정 — V17), 내 정보 조회(DB 기준 역할, OWNER는 본인 매장 id 목록), 카카오·구글 소셜 로그인(처음이면 고객 가입, 기존 회원은 로그인 후 직접 연결 — 이메일로 자동 연결하지 않음, V22), **비밀번호 찾기**(이메일 1회용 재설정 링크 30분 — 가입 여부와 관계없이 같은 응답, 토큰은 해시만 저장·URL 조각(`#`)으로 전달, 재설정 시 모든 로그인 폐기) · **비밀번호 변경**(현재 비밀번호 확인, 지금 기기 외 로그인 폐기, 소셜 전용 회원은 첫 설정) · 이메일 등록·변경 (V23), 브라우저 호출용 CORS(허용 출처는 `CORS_ALLOWED_ORIGINS`, 자격 증명은 Refresh Token 쿠키용) |
 | 매장 · 메뉴 | OWNER의 매장 생성(여러 개 가능), 메뉴 등록·수정·삭제(Soft Delete), 소유권은 `Store.isOwnedBy` 한곳에서 판단 |
 | 주문 | 같은 매장의 메뉴 여러 개를 한 주문에 담음, 총액은 서버 계산, 주문 당시 메뉴 이름·단가 스냅샷, 상태 전이(결제 → 수락 → 배달완료), 목록은 페이지 단위(`?page=`) + 주문 목록 keyset(`?afterId=`, 뒤쪽 페이지도 응답 시간 일정 — 점주 마지막 페이지 426ms → 17.6ms), 주문 단건 조회(결제 정보 포함, 고객 본인·점주 본인 매장) |
 | 결제 | 서버가 정한 금액으로 결제, 중복 결제 방지(DB UNIQUE), `Idempotency-Key`로 재시도 시 처음 응답 재전송(Redis + 결제와 같은 트랜잭션의 DB 기록 — Redis 기록이 사라지거나 장애여도 재전송, 같은 키 다른 요청 422·새 결제는 Redis 장애 시 503), 수수료(기본 5%, 매장별 설정 가능) 스냅샷 저장, 수락 전 취소·배달 후 관리자 환불(전액·**부분 환불**, 수수료는 누적 기준 반올림으로 비율 환불 — V21), 본인 결제 단건 조회(현재 상태)·내 결제 목록(페이지 단위) |
@@ -163,14 +163,14 @@ flowchart LR
 |---|---|
 | [프로젝트 구조](docs/architecture.md) | 아키텍처·주문~정산 흐름 다이어그램, 패키지 구조, Redis 키·TTL·장애 시 동작, Kafka·Outbox 보장 범위·장애 시 동작, 실시간 주문 알림(SSE)·open-in-view 제외, 요청 처리 흐름, 테스트 |
 | [Kafka Outbox · 알림 이벤트](docs/kafka-outbox.md) | Transactional Outbox 도입 배경·설계 결정, 구현 중 발견한 문제, 검증 결과, 후속 과제 (#42) |
-| [로컬 확인 가이드](docs/local-verification.md) | Redis·Kafka 동작을 자동 테스트와 로컬 실행으로 확인하는 절차 (멱등성 재전송·장애, Outbox 발행·재발행·DLT, DLT 재처리 CLI, 메트릭), 주문 목록 keyset·prod 프로필·DB 타임아웃 확인 (#54), CORS 확인 (#61), Slack 알림 발송 확인 (#69), 실시간 주문 알림 compose 확인 (#76), 토스 결제·가짜 PG·부분 환불 확인 (#78) |
+| [로컬 확인 가이드](docs/local-verification.md) | Redis·Kafka 동작을 자동 테스트와 로컬 실행으로 확인하는 절차 (멱등성 재전송·장애, Outbox 발행·재발행·DLT, DLT 재처리 CLI, 메트릭), 주문 목록 keyset·prod 프로필·DB 타임아웃 확인 (#54), CORS 확인 (#61), Slack 알림 발송 확인 (#69), 실시간 주문 알림 compose 확인 (#76), 토스 결제·가짜 PG·부분 환불 확인 (#78), 소셜 로그인 (V22), 비밀번호 찾기·변경·데모 데이터 (#90) |
 | [API 명세](docs/api.md) | API 목록, 주문 상태 흐름, API별 요청·응답·에러 코드, 토스페이먼츠 결제·부분 환불 (#78) |
 | [ERD](docs/erd.md) | ERD 다이어그램, 테이블 간 관계 |
 | [데이터베이스](docs/database.md) | Flyway 마이그레이션, 테이블 상세·제약조건, 시간대, 결제 연관관계 |
 | [금액 처리 정책](docs/money-policy.md) | 금액 타입, 수수료 계산·반올림, 공통·매장별 수수료율, 부분 환불 수수료 (V21) |
 | [정산 기준](docs/settlement-policy.md) | 정산 기간 기준, 집계·확정·지급, 결제 취소·환불과 이월, 감사 이력과 누락·실패분 재집계 |
 | [성능 개선](docs/performance.md) | 목록 API 페이지네이션·N+1 제거·인덱스 근거(EXPLAIN), k6 부하 테스트 개선 전후 비교, 점주 주문 keyset 페이징(#54), 내 결제 목록·정산 내역 EXPLAIN ANALYZE 실측, 주문·결제 쓰기 경로 부하·멱등성 동시 요청·병목 분석(#68) |
-| [운영 프로필](docs/operations.md) | prod 프로필 설정 근거, Swagger·Actuator 노출 정책, 필수 환경변수 점검, 커넥션 풀·DB 타임아웃, 검증 (#54), CORS 설정 근거 (#61) |
+| [운영 프로필](docs/operations.md) | prod 프로필 설정 근거, Swagger·Actuator 노출 정책, 필수 환경변수 점검, 커넥션 풀·DB 타임아웃, 검증 (#54), CORS 설정 근거 (#61), 무료 배포(Render·Neon·Upstash·Vercel)·데모 데이터·재설정 메일(Brevo) (9장) |
 | [질문 · 피드백 요청](docs/review-questions.md) | 과제 리뷰 때 받고 싶은 피드백 |
 
 ## 실행 · 테스트
@@ -196,6 +196,9 @@ flowchart LR
 | `DB_PORT` | - | docker-compose가 PostgreSQL을 호스트(127.0.0.1)에 여는 포트 (기본 5432) |
 | `DB_POOL_SIZE` · `DB_LOCK_TIMEOUT` · `DB_STATEMENT_TIMEOUT` | - | 커넥션 풀 크기(기본 10), 잠금 대기(기본 5s)·문장 실행(기본 30s) 타임아웃 — [운영 프로필 6장](docs/operations.md) |
 | `GRAFANA_ADMIN_PASSWORD` | monitoring | Grafana admin 비밀번호. `--profile monitoring`에서 필수 (빈 값·`admin`이면 Grafana만 기동 실패) |
+| `MAIL_SENDER` | - | 비밀번호 찾기 메일 (V23): `log`(기본, 링크를 앱 로그로) / `brevo`(실제 발송) / `none`(끔 → 비밀번호 찾기 503). prod 기본 `none`, prod에서 `log`는 기동 실패 |
+| `BREVO_API_KEY` · `MAIL_FROM_ADDRESS` · `PASSWORD_RESET_URL` | brevo일 때 | Brevo API 키, Brevo에서 인증한 발신 주소, 메일 링크가 여는 프론트 화면(기본 `http://localhost:5173/password-reset`) — [운영 프로필 9-7](docs/operations.md) |
+| `DEMO_DATA_ENABLED` · `DEMO_PASSWORD` · `DEMO_ADMIN_PASSWORD` | - | 기동 시 데모 회원·매장·메뉴·주문을 한 번만 생성 (기본 꺼짐). 공개 계정 비밀번호 / 비공개 관리자 비밀번호 — [운영 프로필 9-6](docs/operations.md) |
 
 ### 프로필
 | 프로필 | 용도 | DB | 설정 파일 |
@@ -273,3 +276,8 @@ cd frontend && npm install && npm run dev
 - ~~prod 필수 값 점검 순서~~ → 빈 생성 전(`EnvironmentPostProcessor`) 검사로 바꿔 `DB_URL` 누락 시에도 빠진 변수 목록 전체를 출력 (#61)
 - 내 결제 목록: 결제가 많은 고객의 뒤쪽 페이지는 값을 넣은 계획이 결제 전체를 읽음(결제 11만 건에서 약 50ms, generic plan은 5.9ms) → 결제가 더 쌓이면 `payments.user_id` + `(user_id, id)` 인덱스 또는 주문 id 정렬 ([성능 개선](docs/performance.md) 10장)
 - 배포 환경 확정 후: 프록시 헤더·TLS·JVM 옵션, 실제 트래픽 기준 풀 크기·타임아웃 조정
+
+### 회원 (#90)
+- 이메일 소유 확인 메일: 지금은 등록 시 확인하지 않음 → 남의 주소를 먼저 등록하면 실제 주인이 같은 주소를 쓸 수 없음 (재설정 링크는 실제 주인에게 가므로 계정 탈취는 아님)
+- 만료된 비밀번호 재설정 토큰 정리 (`RetentionCleaner`에 추가), IP 단위 요청 제한
+- 비밀번호 변경·재설정 뒤 이미 발급된 Access Token은 만료(최대 15분)까지 유효 — 로그아웃과 같은 한계

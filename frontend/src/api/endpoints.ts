@@ -24,8 +24,13 @@ import type {
 // 화면에서 쓰는 API 모음 — URL·파라미터 기준은 docs/api.md "API 목록"
 export const authApi = {
   // 가입은 항상 고객 — 사장님은 가입 후 전환 신청 + 관리자 승인 (V17)
-  signup: (username: string, password: string) =>
-    request('/api/users/signup', { method: 'POST', body: { username, password }, auth: false }),
+  // 이메일은 선택 (V23) — 비우면 보내지 않음, 나중에 내 정보에서 등록
+  signup: (username: string, password: string, email?: string) =>
+    request('/api/users/signup', {
+      method: 'POST',
+      body: { username, password, ...(email ? { email } : {}) },
+      auth: false,
+    }),
   login: async (username: string, password: string) =>
     (
       await request<TokenResponse>('/api/users/login', {
@@ -37,6 +42,25 @@ export const authApi = {
     ).data,
   logout: () => request('/api/users/logout', { method: 'POST', auth: false, withCredentials: true }),
   me: () => get<MyInfo>('/api/users/me'),
+  // 비밀번호 변경·설정 (V23) — Refresh 쿠키를 함께 보내 지금 기기의 로그인만 남김 (다른 기기 로그인은 서버가 폐기)
+  changePassword: (newPassword: string, currentPassword?: string) =>
+    request('/api/users/me/password', {
+      method: 'PATCH',
+      body: { newPassword, ...(currentPassword ? { currentPassword } : {}) },
+      withCredentials: true,
+    }),
+  changeEmail: async (email: string, currentPassword?: string) =>
+    (
+      await request<MyInfo>('/api/users/me/email', {
+        method: 'PATCH',
+        body: { email, ...(currentPassword ? { currentPassword } : {}) },
+      })
+    ).data,
+  // 비밀번호 찾기 (V23) — 가입 여부와 관계없이 202
+  requestPasswordReset: (email: string) =>
+    request('/api/users/password-reset', { method: 'POST', body: { email }, auth: false }),
+  confirmPasswordReset: (token: string, newPassword: string) =>
+    request('/api/users/password-reset/confirm', { method: 'POST', body: { token, newPassword }, auth: false }),
 };
 
 export const storeApi = {
