@@ -56,6 +56,9 @@ export const authApi = {
         body: { email, ...(currentPassword ? { currentPassword } : {}) },
       })
     ).data,
+  // 이메일 인증 (V24) — 메일 링크의 토큰, 로그인 없이 호출
+  confirmEmailVerification: (token: string) =>
+    request('/api/users/email-verification/confirm', { method: 'POST', body: { token }, auth: false }),
   // 비밀번호 찾기 (V23) — 가입 여부와 관계없이 202
   requestPasswordReset: (email: string) =>
     request('/api/users/password-reset', { method: 'POST', body: { email }, auth: false }),

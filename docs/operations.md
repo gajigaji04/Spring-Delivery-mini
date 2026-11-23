@@ -279,7 +279,7 @@ prod DB는 빈 상태. 데모용 계정은 화면(API)으로 만든다
 | 소셜 로그인 | `KAKAO_CLIENT_ID`·`KAKAO_CLIENT_SECRET`·`GOOGLE_CLIENT_ID`·`GOOGLE_CLIENT_SECRET` — **없으면 `/api/users/social/providers`가 `[]`라 버튼이 안 보임** |
 | 소셜 주소 | `SOCIAL_REDIRECT_BASE_URL`=`https://{프론트}`, `SOCIAL_FRONTEND_CALLBACK_URL`=`https://{프론트}/oauth/callback` (키가 있으면 뒤쪽은 필수 — prod 점검) |
 | 토스 키 | 8장과 같음. `TOSS_MODE=fake`는 prod 점검이 막음 |
-| 비밀번호 찾기 (V23) | `MAIL_SENDER=brevo`, `BREVO_API_KEY`, `MAIL_FROM_ADDRESS`(Brevo에서 인증한 주소), `PASSWORD_RESET_URL`=`https://{프론트}/password-reset` — 비우면 `none`(비밀번호 찾기 503), brevo면 셋 다 필수 (prod 점검) |
+| 비밀번호 찾기 (V23)·이메일 인증 (V24) | `MAIL_SENDER=brevo`, `BREVO_API_KEY`, `MAIL_FROM_ADDRESS`(Brevo에서 인증한 주소), `PASSWORD_RESET_URL`=`https://{프론트}/password-reset`, **`EMAIL_VERIFICATION_URL`=`https://{프론트}/email-verification`(V24 추가)** — 비우면 `none`(비밀번호 찾기·이메일 등록 503), brevo면 넷 다 필수 (prod 점검) |
 | 데모 데이터 | `DEMO_DATA_ENABLED=true`, `DEMO_PASSWORD`(공개), `DEMO_ADMIN_PASSWORD`(비공개) — 9-6 |
 
 `{프론트}`는 **Vercel 프로덕션 도메인**(`<프로젝트>.vercel.app`). 브랜치 미리보기 주소(`<프로젝트>-git-<브랜치>-<팀>.vercel.app`)는
@@ -328,7 +328,7 @@ Docker로 Render 무료 사양을 흉내 낸 값 — **Render 실제 CPU 배분�
 | 정산 스케줄러 | 01:10에 절전 중이면 실행되지 않음 → 시연은 관리자 재집계 API로 |
 | 기능 | 8-7 표 (비공개 포트 항목 제외) + 결제 후 알림 생성·사장님 SSE 토스트 |
 | 소셜 버튼 | `https://{프론트}/api/users/social/providers`가 `["kakao","google"]` |
-| 비밀번호 찾기 | 가입 시 이메일 입력 → 로그인 화면 "비밀번호를 잊으셨나요?" → 메일 링크 → 새 비밀번호로 로그인, 다른 기기 로그아웃 |
+| 비밀번호 찾기 | 가입 시 이메일 입력 → 인증 메일 링크 → '이메일 인증하기' → 로그인 화면 "비밀번호를 잊으셨나요?" → 메일 링크 → 새 비밀번호로 로그인, 다른 기기 로그아웃 |
 | 데모 데이터 | Render 로그 `데모 데이터 생성 완료`, 로그인 화면 데모 버튼으로 사장님·고객 로그인 |
 
 ### 9-6. 데모 데이터 (`demo-data.*`, `maintenance.DemoDataSeeder`)
@@ -348,15 +348,15 @@ Docker로 Render 무료 사양을 흉내 낸 값 — **Render 실제 CPU 배분�
 - 로그인 화면 버튼: Vercel `VITE_DEMO_ACCOUNTS=OWNER:demoowner:{DEMO_PASSWORD},CUSTOMER:democustomer:{DEMO_PASSWORD}` (ADMIN은 넣지 않음 — 빌드 결과에 그대로 보임)
 - 다시 만들려면: 데모 행을 지우고 재시작 (또는 Neon 브랜치 초기화)
 
-### 9-7. 비밀번호 찾기 메일 (Brevo)
+### 9-7. 비밀번호 찾기·이메일 인증 메일 (Brevo)
 
 Render Free는 SMTP 포트(25·465·587)로 나가는 연결을 막아 Gmail SMTP 등을 쓸 수 없음 → HTTPS API로 보내는 Brevo 사용
 (무료 하루 300통, 도메인 없이 발신 주소 1개 인증으로 발송 가능).
 
 1. app.brevo.com 가입 → Senders, Domains & Dedicated IPs → Senders에서 발신 주소 추가·인증 메일 확인
 2. SMTP & API → API Keys → 키 생성 → Render `BREVO_API_KEY`
-3. Render `MAIL_SENDER=brevo`, `MAIL_FROM_ADDRESS`(1의 주소), `PASSWORD_RESET_URL=https://{프론트}/password-reset`
-4. 확인: 가입(이메일 입력) → 비밀번호 찾기 → 메일 도착(스팸함 포함) → 링크 → 재설정. 실패는 Render 로그 `비밀번호 재설정 메일 발송 실패`
+3. Render `MAIL_SENDER=brevo`, `MAIL_FROM_ADDRESS`(1의 주소), `PASSWORD_RESET_URL=https://{프론트}/password-reset`, `EMAIL_VERIFICATION_URL=https://{프론트}/email-verification`(V24)
+4. 확인: 가입(이메일 입력) → 인증 메일 링크 → 인증 → 비밀번호 찾기 → 메일 도착(스팸함 포함) → 링크 → 재설정. 실패는 Render 로그 `비밀번호 재설정 메일 발송 실패`
 
 - 무료 도메인 메일(gmail 등)을 발신 주소로 쓰면 받는 쪽 DMARC 정책 때문에 스팸함으로 갈 수 있음 — 시연 한계로 둠
 - 로컬은 `MAIL_SENDER` 기본 `log` → 링크가 앱 로그에 찍힘 (prod에서 log는 기동 실패)

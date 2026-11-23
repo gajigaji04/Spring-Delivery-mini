@@ -57,13 +57,13 @@ function RequestLinkForm() {
     <>
       <div className="lpanel__head">
         <h2>비밀번호 찾기</h2>
-        <p>가입할 때나 내 정보에서 등록한 이메일로 재설정 링크를 보내 드려요.</p>
+        <p>인증을 마친 이메일로 재설정 링크를 보내 드려요. 인증하지 않은 주소로는 메일이 가지 않아요.</p>
       </div>
       {sent ? (
         // 가입되지 않은 주소에도 같은 안내 — 화면으로 가입 여부를 알 수 없게 (서버도 항상 202)
         <div className="card" role="status">
           <p>
-            <b>{email.trim()}</b> 으로 가입된 계정이 있다면 재설정 링크를 보냈어요.
+            <b>{email.trim()}</b> 으로 인증된 계정이 있다면 재설정 링크를 보냈어요.
           </p>
           <p className="muted">링크는 30분 동안 한 번만 쓸 수 있어요. 메일이 없으면 스팸함을 확인하거나 1분 뒤 다시 요청해 주세요.</p>
           <button type="button" className="btn btn--ghost" onClick={() => setSent(false)}>

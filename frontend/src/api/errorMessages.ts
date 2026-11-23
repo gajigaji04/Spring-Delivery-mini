@@ -48,6 +48,11 @@ const CODE_MESSAGES: Record<string, string> = {
   DEMO_ACCOUNT_PROTECTED: '공개 데모 계정은 비밀번호·이메일을 바꿀 수 없습니다.',
   PASSWORD_RESET_UNAVAILABLE: '지금은 비밀번호 찾기를 사용할 수 없습니다. 관리자에게 문의해 주세요.',
 
+  // 이메일 인증 (V24)
+  EMAIL_VERIFICATION_TOKEN_INVALID: '인증 링크가 만료되었거나 이미 사용되었습니다. 내 정보에서 인증 메일을 다시 요청해 주세요.',
+  EMAIL_VERIFICATION_TOO_FREQUENT: '인증 메일을 방금 보냈어요. 1분 뒤 다시 요청해 주세요.',
+  EMAIL_VERIFICATION_UNAVAILABLE: '지금은 이메일을 등록·변경할 수 없습니다. 관리자에게 문의해 주세요.',
+
   // 소셜 로그인 (V22) — API 오류 code와 /oauth/callback?error= 값이 같음
   SOCIAL_PROVIDER_NOT_SUPPORTED: '지금은 이 소셜 로그인을 사용할 수 없습니다.',
   SOCIAL_LINK_FORBIDDEN: '관리자 계정은 소셜 계정을 연결할 수 없습니다.',

@@ -6,6 +6,8 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import jakarta.persistence.*;
 
+import java.time.LocalDateTime;
+
 // BaseEntity 상속 → created_at(가입 시각), updated_at(정보 수정 시각) 자동 기록
 @Entity
 @Table(name = "users") // user는 PostgreSQL 예약어라 테이블명을 users로 지정
@@ -30,8 +32,12 @@ public class User extends BaseEntity {
 
     // 비밀번호 재설정 링크를 받는 주소 (V23). 없으면 null — 비밀번호 찾기를 쓸 수 없음
     // 항상 정규화(앞뒤 공백 제거·소문자)해서 저장: DB CHECK(email = lower(email)) + UNIQUE로 한 주소 = 한 회원
+    // V24부터는 인증 링크를 연 순간에만 바뀜(verifyEmail) — 인증 대기 중인 주소는 email_verification_tokens에
     @Column(unique = true)
     private String email;
+
+    // 이메일 인증 시각 (V24). null이면 미인증 — V24 이전에 확인 없이 등록된 주소. 미인증 주소로는 비밀번호를 찾을 수 없음
+    private LocalDateTime emailVerifiedAt;
 
     public User(String username, String password, Role role) {
         this.username = username;
@@ -44,9 +50,20 @@ public class User extends BaseEntity {
         return new User(username, null, Role.CUSTOMER);
     }
 
-    // 이메일 등록·변경 (V23) — 형식 검사는 요청 DTO(@Email), 중복은 DB UNIQUE가 최종 근거
-    public void changeEmail(String email) {
-        this.email = normalizeEmail(email);
+    // 이메일 인증 완료 (V24) — 인증 메일 링크를 연 회원만 주소가 바뀜 (service.EmailVerificationService)
+    // 형식 검사는 요청 DTO(@Email), 중복은 DB UNIQUE가 최종 근거
+    public void verifyEmail(String email, LocalDateTime now) {
+        String normalized = normalizeEmail(email);
+        if (normalized == null || now == null) {
+            throw new IllegalArgumentException("인증할 이메일과 시각이 필요합니다.");
+        }
+        this.email = normalized;
+        this.emailVerifiedAt = now;
+    }
+
+    // 비밀번호 찾기에 쓸 수 있는 주소인지 — 주소가 있고 인증을 마쳤을 때만
+    public boolean isEmailVerified() {
+        return email != null && emailVerifiedAt != null;
     }
 
     // 비밀번호 변경·재설정·소셜 전용 회원의 첫 설정 (V23) — 인코딩된 해시만 받음 (평문은 엔티티에 들어오지 않음)

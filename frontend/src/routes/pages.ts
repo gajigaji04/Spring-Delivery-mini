@@ -12,6 +12,7 @@ const loaders = {
   signup: () => import('../pages/SignupPage'),
   oauthCallback: () => import('../pages/OAuthCallbackPage'),
   passwordReset: () => import('../pages/PasswordResetPage'),
+  emailVerification: () => import('../pages/EmailVerificationPage'),
   cart: () => import('../pages/CartPage'),
   orders: () => import('../pages/OrdersPage'),
   orderDetail: () => import('../pages/OrderDetailPage'),

@@ -16,10 +16,12 @@ public record MyInfoResponse(
         List<Long> storeIds,     // OWNER의 매장 id (id 오름차순), 그 밖의 역할은 빈 배열
         String email,            // 비밀번호 찾기 메일 주소 (V23), 없으면 null
         boolean hasPassword,     // false면 소셜 전용 회원 — 비밀번호 변경 화면이 "현재 비밀번호" 없이 설정으로 바뀜
-        boolean demoAccount) {   // 공개 데모 계정 — 비밀번호·이메일 변경 불가 (화면에서 폼을 숨김)
+        boolean demoAccount,     // 공개 데모 계정 — 비밀번호·이메일 변경 불가 (화면에서 폼을 숨김)
+        boolean emailVerified,   // email이 인증된 주소인지 (V24) — false면 비밀번호 찾기에 쓸 수 없음 (V24 이전 등록 주소)
+        String pendingEmail) {   // 인증 메일을 보내고 링크를 기다리는 주소 (V24), 없으면 null — 인증 전까지 email은 그대로
 
-    public static MyInfoResponse of(User user, List<Long> storeIds, boolean demoAccount) {
+    public static MyInfoResponse of(User user, List<Long> storeIds, boolean demoAccount, String pendingEmail) {
         return new MyInfoResponse(user.getId(), user.getUsername(), user.getRole(), user.getCreatedAt(), storeIds,
-                user.getEmail(), user.hasPassword(), demoAccount);
+                user.getEmail(), user.hasPassword(), demoAccount, user.isEmailVerified(), pendingEmail);
     }
 }

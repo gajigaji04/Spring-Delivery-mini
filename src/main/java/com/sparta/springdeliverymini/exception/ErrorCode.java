@@ -75,5 +75,10 @@ public enum ErrorCode {
     PASSWORD_RESET_TOKEN_INVALID,  // 400 재설정 링크가 없거나 만료·이미 사용 → 비밀번호 찾기부터 다시
     EMAIL_ALREADY_USED,            // 409 다른 회원이 쓰는 이메일
     DEMO_ACCOUNT_PROTECTED,        // 403 공개 데모 계정은 비밀번호·이메일을 바꿀 수 없음 (방문자 모두가 쓰는 계정)
-    PASSWORD_RESET_UNAVAILABLE     // 503 메일 발송이 설정되지 않아 비밀번호 찾기를 쓸 수 없음 (mail.sender=none)
+    PASSWORD_RESET_UNAVAILABLE,    // 503 메일 발송이 설정되지 않아 비밀번호 찾기를 쓸 수 없음 (mail.sender=none)
+
+    // 이메일 인증 (V24) — docs/api.md 비밀번호·이메일 장
+    EMAIL_VERIFICATION_TOKEN_INVALID,  // 400 인증 링크가 없거나 만료·이미 사용 → 내 정보에서 인증 메일 다시 요청
+    EMAIL_VERIFICATION_TOO_FREQUENT,   // 429 재요청 간격(resend-cooldown) 안에 인증 메일을 다시 요청
+    EMAIL_VERIFICATION_UNAVAILABLE     // 503 메일 발송이 설정되지 않아 이메일을 등록·변경할 수 없음 (mail.sender=none)
 }

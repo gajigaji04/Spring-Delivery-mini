@@ -30,7 +30,21 @@ export default function MePage() {
         <dt className="muted">가입</dt>
         <dd>{formatDateTime(me.createdAt)}</dd>
         <dt className="muted">이메일</dt>
-        <dd>{me.email ?? <span className="muted">등록 안 됨 — 비밀번호 찾기를 쓰려면 등록해 주세요</span>}</dd>
+        <dd>
+          {me.email ? (
+            <>
+              {me.email}{' '}
+              {!me.emailVerified && <span className="muted">(미인증 — 인증해야 비밀번호 찾기에 쓸 수 있어요)</span>}
+            </>
+          ) : (
+            <span className="muted">등록 안 됨 — 비밀번호 찾기를 쓰려면 등록하고 인증해 주세요</span>
+          )}
+          {me.pendingEmail && (
+            <div className="muted" role="status">
+              인증 대기: {me.pendingEmail} — 메일함의 인증 링크를 열면 등록돼요
+            </div>
+          )}
+        </dd>
         {me.role === 'OWNER' && (
           <>
             <dt className="muted">매장 id</dt>
@@ -54,7 +68,10 @@ export default function MePage() {
   );
 }
 
-/** 이메일 등록·변경 (V23) — 비밀번호가 있는 회원은 현재 비밀번호 확인 (토큰만 훔친 사람이 주소를 바꿔 계정을 가져가지 못하도록) */
+/**
+ * 이메일 등록·변경 (V23) — 비밀번호가 있는 회원은 현재 비밀번호 확인 (토큰만 훔친 사람이 주소를 바꿔 계정을 가져가지 못하도록)
+ * V24: 바로 바뀌지 않고 입력한 주소로 인증 메일 → 링크를 열어야 확정. 미인증 주소는 같은 주소를 다시 입력해 인증 메일을 받음
+ */
 function EmailSection({ me }: { me: MyInfo }) {
   const { reloadMe } = useAuth();
   const { notify } = useToast();
@@ -72,7 +89,7 @@ function EmailSection({ me }: { me: MyInfo }) {
       await reloadMe();
       setEmail('');
       setCurrentPassword('');
-      notify(me.email ? '이메일을 바꿨어요' : '이메일을 등록했어요');
+      notify('인증 메일을 보냈어요. 메일함의 링크를 열면 등록돼요');
     } catch (err) {
       setError(err);
     } finally {
@@ -83,6 +100,7 @@ function EmailSection({ me }: { me: MyInfo }) {
   return (
     <>
       <h2>{me.email ? '이메일 변경' : '이메일 등록'}</h2>
+      <p className="muted">입력한 주소로 인증 메일을 보내요. 링크를 열기 전까지는 지금 이메일이 그대로 쓰여요.</p>
       <form className="form" onSubmit={onSubmit}>
         <label>
           새 이메일
@@ -109,7 +127,7 @@ function EmailSection({ me }: { me: MyInfo }) {
         )}
         <ErrorMessage error={error} />
         <button className="btn" disabled={busy}>
-          {me.email ? '변경' : '등록'}
+          인증 메일 보내기
         </button>
       </form>
     </>

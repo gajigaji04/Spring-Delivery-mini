@@ -273,6 +273,14 @@ password-reset:
   ttl: 30m
   resend-cooldown: 1m
 
+# 이메일 인증 링크 (V24, config.EmailVerificationProperties) — 링크 = url + #token=...
+#   url: 프론트의 인증 화면 (Vercel 배포는 https://{프론트 도메인}/email-verification)
+#   resend-cooldown: 내 정보에서 인증 메일을 다시 요청할 수 있는 최소 간격 (그 안이면 429)
+email-verification:
+  url: ${EMAIL_VERIFICATION_URL:http://localhost:5173/email-verification}
+  ttl: 24h
+  resend-cooldown: 1m
+
 # 배포 데모 데이터 (config.DemoDataProperties, maintenance.DemoDataSeeder) — 기본 꺼짐
 #   켜면 기동 시 데모 관리자·사장님·고객·매장·메뉴·주문을 한 번만 만듦 (사장님 아이디가 이미 있으면 건너뜀)
 #   password: 공개 데모 계정(사장님·고객) 비밀번호 / admin-password: 비공개 관리자 비밀번호 (비우면 관리자 로그인 불가)

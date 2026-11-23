@@ -2,6 +2,7 @@ package com.sparta.springdeliverymini.controller;
 
 import lombok.RequiredArgsConstructor;
 import com.sparta.springdeliverymini.dto.EmailChangeRequest;
+import com.sparta.springdeliverymini.dto.EmailVerificationConfirmRequest;
 import com.sparta.springdeliverymini.dto.LoginRequest;
 import com.sparta.springdeliverymini.dto.LoginResponse;
 import com.sparta.springdeliverymini.dto.MyInfoResponse;
@@ -12,6 +13,7 @@ import com.sparta.springdeliverymini.dto.SignupRequest;
 import com.sparta.springdeliverymini.dto.UserResponse;
 import com.sparta.springdeliverymini.exception.ApiException;
 import com.sparta.springdeliverymini.service.AuthTokenService;
+import com.sparta.springdeliverymini.service.EmailVerificationService;
 import com.sparta.springdeliverymini.service.IssuedTokens;
 import com.sparta.springdeliverymini.service.PasswordResetService;
 import com.sparta.springdeliverymini.service.UserService;
@@ -38,6 +40,7 @@ public class UserController {
     private final AuthTokenService authTokenService;
     private final RefreshTokenCookies refreshTokenCookies;
     private final PasswordResetService passwordResetService;
+    private final EmailVerificationService emailVerificationService;
 
     // 회원가입 — 토큰 없이 호출 가능 (SecurityConfig에서 permitAll)
     // @Valid: SignupRequest의 검증 조건(아이디 4~20자 등)을 어기면 → 400
@@ -109,10 +112,18 @@ public class UserController {
         return ResponseEntity.noContent().build();
     }
 
-    // 이메일 등록·변경 (V23) — 바뀐 내 정보 반환
+    // 이메일 등록·변경 (V23) — 내 정보 반환
+    // V24: 바로 바뀌지 않고 새 주소로 인증 메일 → 응답의 pendingEmail이 인증 대기 주소 (링크를 열면 email로 확정)
     @PatchMapping("/me/email")
     public MyInfoResponse changeEmail(Authentication authentication, @Valid @RequestBody EmailChangeRequest request) {
         return userService.changeEmail(authentication.getName(), request);
+    }
+
+    // 이메일 인증 (V24, 토큰 없이 호출 — 메일을 다른 기기에서 열 수 있음) — 성공 204
+    @PostMapping("/email-verification/confirm")
+    public ResponseEntity<Void> confirmEmailVerification(@Valid @RequestBody EmailVerificationConfirmRequest request) {
+        emailVerificationService.confirm(request.token());
+        return ResponseEntity.noContent().build();
     }
 
     // 비밀번호 찾기 — 재설정 링크 메일 요청 (V23, 토큰 없이 호출). 가입 여부와 관계없이 202

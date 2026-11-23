@@ -19,6 +19,8 @@ export function App() {
         <Route path="oauth/callback" element={<P.oauthCallback />} />
         {/* 비밀번호 찾기 (V23) — 메일 링크는 #token= 을 붙여 이 화면으로 옴 (토큰이 서버 로그에 남지 않도록 쿼리가 아닌 조각) */}
         <Route path="password-reset" element={<P.passwordReset />} />
+        {/* 이메일 인증 (V24) — 인증 메일 링크도 #token= 조각. 로그인 없이 열 수 있음 (다른 기기에서 메일을 열어도 됨) */}
+        <Route path="email-verification" element={<P.emailVerification />} />
 
         <Route path="cart" element={<RequireRole roles={['CUSTOMER']}><P.cart /></RequireRole>} />
         <Route path="orders" element={<RequireRole roles={['CUSTOMER', 'OWNER']}><P.orders /></RequireRole>} />

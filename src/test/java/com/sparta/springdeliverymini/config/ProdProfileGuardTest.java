@@ -111,7 +111,7 @@ class ProdProfileGuardTest {
         assertThatCode(() -> ProdProfileGuard.check(log)).doesNotThrowAnyException();
     }
 
-    // 메일 발송(V23): brevo면 키·발신 주소·링크 주소 필수, log는 재설정 링크가 로그에 남으므로 금지, 기본(none)은 통과
+    // 메일 발송(V23): brevo면 키·발신 주소·링크 주소(재설정·이메일 인증 V24) 필수, log는 재설정 링크가 로그에 남으므로 금지, 기본(none)은 통과
     @Test
     void 메일_발송기가_brevo인데_키가_없으면_막고_log면_막고_none이면_통과한다() {
         MockEnvironment brevo = completeEnvironment();
@@ -121,10 +121,12 @@ class ProdProfileGuardTest {
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("BREVO_API_KEY")
                 .hasMessageContaining("PASSWORD_RESET_URL")
+                .hasMessageContaining("EMAIL_VERIFICATION_URL")
                 .hasMessageNotContaining("MAIL_FROM_ADDRESS");
 
         brevo.setProperty("BREVO_API_KEY", "key");
         brevo.setProperty("PASSWORD_RESET_URL", "https://front.example.com/password-reset");
+        brevo.setProperty("EMAIL_VERIFICATION_URL", "https://front.example.com/email-verification");
         assertThatCode(() -> ProdProfileGuard.check(brevo)).doesNotThrowAnyException();
 
         MockEnvironment log = completeEnvironment();

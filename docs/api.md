@@ -113,6 +113,7 @@
 | 이메일 등록·변경 (V23) | PATCH | `/api/users/me/email` | O | 로그인 사용자 | 200 |
 | 비밀번호 찾기 — 링크 요청 (V23) | POST | `/api/users/password-reset` | X | 누구나 | 202 |
 | 비밀번호 재설정 (V23) | POST | `/api/users/password-reset/confirm` | X | 누구나 | 204 |
+| 이메일 인증 (V24) | POST | `/api/users/email-verification/confirm` | X | 누구나(메일 링크 토큰) | 204 |
 | 소셜 로그인 시작 (브라우저 이동) | GET | `/oauth2/authorization/{provider}[?mode=link]` | X | - | 302 |
 | 소셜 로그인 콜백 (공급자 → 서버) | GET | `/login/oauth2/code/{provider}` | X | 시작 기록 쿠키 | 302 |
 | 사용 가능한 소셜 공급자 | GET | `/api/users/social/providers` | X | - | 200 |
@@ -196,7 +197,8 @@ Request
 ```
 - `username`: 4~20자
 - `password`: 8~72자 (BCrypt로 암호화해 저장)
-- `email`: 선택 (V23), 비밀번호 찾기 메일 주소. 앞뒤 공백 제거·소문자로 저장, 한 주소 = 한 회원 (이미 쓰는 주소면 409 `EMAIL_ALREADY_USED`)
+- `email`: 선택 (V23), 비밀번호 찾기 메일 주소. 앞뒤 공백 제거·소문자, 한 주소 = 한 회원 (이미 다른 회원의 주소면 409 `EMAIL_ALREADY_USED`)
+  - V24: **바로 저장하지 않고 그 주소로 인증 메일** → 링크를 열어야 등록. 메일 발송이 꺼져 있으면(`mail.sender=none`) 가입은 성공하고 주소는 버려짐(내 정보에서 다시 등록)
 - `role`: 선택, 생략하거나 `CUSTOMER`만 (V17 승인제). **가입 회원은 항상 CUSTOMER**
   - `OWNER` → 400: 사장님은 가입 후 [사장님 전환 신청](#사장님-전환-신청-v17) → 관리자 승인 (이전에는 `role: OWNER`만으로 확인 없이 매장·메뉴를 만들 수 있었음)
   - `ADMIN` → 400: 관리자는 DB에서 직접 지정
@@ -288,16 +290,16 @@ Response `200 OK` (`MyInfoResponse`, #62)
 - 토큰의 아이디로 **DB의 현재 회원**을 조회해 응답 → 토큰 발급 뒤 역할이 바뀌었으면 `role`은 바뀐 값
 - `storeIds`: OWNER의 매장 id (id 오름차순). CUSTOMER·ADMIN은 빈 배열 `[]` (null 아님)
 - 별도 표시 이름(닉네임) 컬럼이 없어 화면 표시는 `username` 사용, 비밀번호는 포함하지 않음
-- `email`(V23): 없으면 `null` / `hasPassword`: `false`면 소셜 전용 회원 / `demoAccount`: 공개 데모 계정(비밀번호·이메일 변경 불가 → 화면에서 폼 숨김)
+- `email`(V23): 없으면 `null` / `emailVerified`(V24): `email`이 인증된 주소인지 — `false`(V24 이전 등록)면 비밀번호 찾기에 쓰이지 않음 / `pendingEmail`(V24): 인증 링크를 기다리는 주소, 없으면 `null` / `hasPassword`: `false`면 소셜 전용 회원 / `demoAccount`: 공개 데모 계정(비밀번호·이메일 변경 불가 → 화면에서 폼 숨김)
 - 변경 전(#62 이전) 응답 `{ "username", "authorities": ["ROLE_..."] }`는 토큰 값을 그대로 돌려주던 형식 → 제거
 
 | 코드 | 상황 |
 |---|---|
 | 401 | 토큰 없음·만료·위조, 회원이 삭제됨 |
 
-### 비밀번호·이메일 (V23)
+### 비밀번호·이메일 (V23, 이메일 인증 V24)
 
-설계는 `docs/architecture.md` 인증 장 "비밀번호 재설정·변경".
+설계는 `docs/architecture.md` 인증 장 "비밀번호 재설정·변경", "이메일 인증".
 
 #### 비밀번호 변경·설정 `PATCH /api/users/me/password`
 ```json
@@ -313,14 +315,28 @@ Response `200 OK` (`MyInfoResponse`, #62)
 { "email": "new@example.com", "currentPassword": "password123" }
 ```
 - 비밀번호가 있는 회원은 `currentPassword` 필수 (Access Token만 훔친 사람이 주소를 바꾼 뒤 비밀번호 찾기로 계정을 가져가지 못하도록)
-- 응답 `200`: 바뀐 내 정보(`MyInfoResponse`). 이전 주소로 보낸 재설정 링크는 무효
-- 주소 소유 확인 메일은 보내지 않음 (한계 — 설계 문서)
+- **V24: 바로 바뀌지 않음** — 입력한 주소로 인증 메일을 보내고 응답 `200` 내 정보의 `pendingEmail`이 그 주소. 링크를 열어야 `email`로 확정되고, 그때 이전 주소로 보낸 재설정 링크가 무효
+  - 인증 전까지 지금 주소(인증된 주소)로 비밀번호 찾기 가능
+  - 미인증 주소(`emailVerified: false`)와 같은 주소를 입력하면 그 주소로 인증 메일 (기존 회원의 인증 방법)
+  - 인증된 지금 주소를 입력하면 진행 중인 변경 취소(대기 링크 무효, 메일 없음)
+  - 새 링크를 보내면 이전 링크 무효. 1분 안에 다시 요청하면 `429 EMAIL_VERIFICATION_TOO_FREQUENT`(가입 때 보낸 인증 메일 포함)
+  - 메일 발송이 꺼져 있으면 `503 EMAIL_VERIFICATION_UNAVAILABLE`
+
+#### 이메일 인증 `POST /api/users/email-verification/confirm` (V24)
+```json
+{ "token": "인증 메일 링크의 #token= 값" }
+```
+- 메일 링크: `{EMAIL_VERIFICATION_URL}#token={43자}` — 24시간, 1회용. 로그인 없이 호출 (다른 기기에서 메일을 열어도 됨)
+- 성공 `204`: `users.email` = 그 주소, `emailVerified: true`
+- 없는·만료·이미 사용한 토큰은 구분 없이 `400 EMAIL_VERIFICATION_TOKEN_INVALID`
+- 기다리는 동안 다른 회원이 같은 주소를 먼저 인증했으면 `409 EMAIL_ALREADY_USED` (대기 중인 주소는 선점되지 않음)
 
 #### 비밀번호 찾기 — 링크 요청 `POST /api/users/password-reset`
 ```json
 { "email": "user1@example.com" }
 ```
 - **가입 여부와 관계없이 항상 `202`** (본문 없음) — 응답으로 가입된 이메일인지 알 수 없음. 메일은 커밋 뒤 별도 스레드에서 발송
+- **인증된 주소(V24)로만 발송** — 미인증 주소도 없는 주소와 같은 `202`, 메일 없음
 - 메일 링크: `{PASSWORD_RESET_URL}#token={43자}` — 30분, 1회용. 새 링크를 받으면 이전 링크는 무효
 - 같은 회원에게 1분 안에 다시 요청하면 보내지 않음 (응답은 같은 `202`)
 - 메일 발송이 꺼져 있으면(`mail.sender=none`, prod 기본) `503 PASSWORD_RESET_UNAVAILABLE`
@@ -337,8 +353,11 @@ Response `200 OK` (`MyInfoResponse`, #62)
 | 400 `INVALID_CURRENT_PASSWORD` | 현재 비밀번호가 틀림 (401이 아님 — 토큰 만료로 보고 재발급하지 않도록) |
 | 400 `PASSWORD_RESET_TOKEN_INVALID` | 재설정 링크가 없거나 만료·이미 사용 |
 | 403 `DEMO_ACCOUNT_PROTECTED` | 공개 데모 계정의 비밀번호·이메일 변경 |
-| 409 `EMAIL_ALREADY_USED` | 다른 회원이 쓰는 이메일 |
-| 503 `PASSWORD_RESET_UNAVAILABLE` | 메일 발송이 설정되지 않음 |
+| 400 `EMAIL_VERIFICATION_TOKEN_INVALID` | 인증 링크가 없거나 만료·이미 사용 (V24) |
+| 409 `EMAIL_ALREADY_USED` | 다른 회원이 쓰는 이메일 (등록 요청·인증 시점 모두) |
+| 429 `EMAIL_VERIFICATION_TOO_FREQUENT` | 1분 안에 인증 메일 재요청 (V24) |
+| 503 `PASSWORD_RESET_UNAVAILABLE` | 메일 발송이 설정되지 않음 (비밀번호 찾기) |
+| 503 `EMAIL_VERIFICATION_UNAVAILABLE` | 메일 발송이 설정되지 않음 (이메일 등록·변경, V24) |
 
 ### 사장님 전환 신청 (V17)
 가입은 모두 고객(CUSTOMER) → 사장님 전환 신청 → 관리자 승인 시 OWNER. 기존 OWNER 계정은 그대로 (사용자 결정 2026-11-21)

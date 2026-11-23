@@ -12,7 +12,7 @@
 | 정산 | 확정·지급된 기록은 고치지 않고 환불을 다음 정산에서 차감·이월, 회계 항등식을 테스트로 고정 |
 | 이벤트 | Transactional Outbox + 멱등 Consumer + DLT 재처리 → Kafka가 멈춰도 결제는 성공하고 이벤트는 회복 후 발행 |
 | 장애 분석 | SSE 연결이 DB 커넥션을 쥐던 문제(open-in-view) → 연결 유지 중 활성 커넥션 0, Redis 장애 응답 4~9초 → 1.02초(Netty DNS 조회 원인) |
-| 검증 | 테스트 112개 클래스 973건(Testcontainers PostgreSQL·Redis·Kafka) + 프론트 80건, k6 부하 테스트, Prometheus 알림 규칙 발동 확인 |
+| 검증 | 테스트 113개 클래스 985건(Testcontainers PostgreSQL·Redis·Kafka) + 프론트 81건, k6 부하 테스트, Prometheus 알림 규칙 발동 확인 |
 
 ## 화면
 로컬 compose(가짜 PG 모드)와 더미 데이터로 찍은 화면입니다 (2026-11-22).
@@ -61,7 +61,7 @@ flowchart LR
 ## 주요 기능
 | 영역 | 내용 |
 |---|---|
-| 회원 | 회원가입·로그인, BCrypt, JWT 인증(Access 15분) + Refresh Token(HttpOnly 쿠키, DB에 해시만, 재발급마다 교체·재사용 감지 시 로그인 전체 폐기, 로그인 후 30일 절대 만료, 로그아웃), 401 만료·위조 구분(`code`), CUSTOMER / OWNER / ADMIN 역할 (가입은 CUSTOMER만, OWNER는 사장님 전환 신청 → 관리자 승인, ADMIN은 DB에서만 지정 — V17), 내 정보 조회(DB 기준 역할, OWNER는 본인 매장 id 목록), 카카오·구글 소셜 로그인(처음이면 고객 가입, 기존 회원은 로그인 후 직접 연결 — 이메일로 자동 연결하지 않음, V22), **비밀번호 찾기**(이메일 1회용 재설정 링크 30분 — 가입 여부와 관계없이 같은 응답, 토큰은 해시만 저장·URL 조각(`#`)으로 전달, 재설정 시 모든 로그인 폐기) · **비밀번호 변경**(현재 비밀번호 확인, 지금 기기 외 로그인 폐기, 소셜 전용 회원은 첫 설정) · 이메일 등록·변경 (V23), 브라우저 호출용 CORS(허용 출처는 `CORS_ALLOWED_ORIGINS`, 자격 증명은 Refresh Token 쿠키용) |
+| 회원 | 회원가입·로그인, BCrypt, JWT 인증(Access 15분) + Refresh Token(HttpOnly 쿠키, DB에 해시만, 재발급마다 교체·재사용 감지 시 로그인 전체 폐기, 로그인 후 30일 절대 만료, 로그아웃), 401 만료·위조 구분(`code`), CUSTOMER / OWNER / ADMIN 역할 (가입은 CUSTOMER만, OWNER는 사장님 전환 신청 → 관리자 승인, ADMIN은 DB에서만 지정 — V17), 내 정보 조회(DB 기준 역할, OWNER는 본인 매장 id 목록), 카카오·구글 소셜 로그인(처음이면 고객 가입, 기존 회원은 로그인 후 직접 연결 — 이메일로 자동 연결하지 않음, V22), **비밀번호 찾기**(인증된 이메일로만 1회용 재설정 링크 30분 — 가입·인증 여부와 관계없이 같은 응답, 토큰은 해시만 저장·URL 조각(`#`)으로 전달, 재설정 시 모든 로그인 폐기) · **비밀번호 변경**(현재 비밀번호 확인, 지금 기기 외 로그인 폐기, 소셜 전용 회원은 첫 설정) · 이메일 등록·변경 (V23) · **이메일 소유권 인증**(가입·변경한 주소는 1회용 인증 링크 24시간을 열어야 확정, 변경 중에는 기존 주소 유지, 인증 전 주소는 선점 불가 — V24), 브라우저 호출용 CORS(허용 출처는 `CORS_ALLOWED_ORIGINS`, 자격 증명은 Refresh Token 쿠키용) |
 | 매장 · 메뉴 | OWNER의 매장 생성(여러 개 가능), 메뉴 등록·수정·삭제(Soft Delete), 소유권은 `Store.isOwnedBy` 한곳에서 판단 |
 | 주문 | 같은 매장의 메뉴 여러 개를 한 주문에 담음, 총액은 서버 계산, 주문 당시 메뉴 이름·단가 스냅샷, 상태 전이(결제 → 수락 → 배달완료), 목록은 페이지 단위(`?page=`) + 주문 목록 keyset(`?afterId=`, 뒤쪽 페이지도 응답 시간 일정 — 점주 마지막 페이지 426ms → 17.6ms), 주문 단건 조회(결제 정보 포함, 고객 본인·점주 본인 매장) |
 | 결제 | 서버가 정한 금액으로 결제, 중복 결제 방지(DB UNIQUE), `Idempotency-Key`로 재시도 시 처음 응답 재전송(Redis + 결제와 같은 트랜잭션의 DB 기록 — Redis 기록이 사라지거나 장애여도 재전송, 같은 키 다른 요청 422·새 결제는 Redis 장애 시 503), 수수료(기본 5%, 매장별 설정 가능) 스냅샷 저장, 수락 전 취소·배달 후 관리자 환불(전액·**부분 환불**, 수수료는 누적 기준 반올림으로 비율 환불 — V21), 본인 결제 단건 조회(현재 상태)·내 결제 목록(페이지 단위) |
@@ -163,7 +163,7 @@ flowchart LR
 |---|---|
 | [프로젝트 구조](docs/architecture.md) | 아키텍처·주문~정산 흐름 다이어그램, 패키지 구조, Redis 키·TTL·장애 시 동작, Kafka·Outbox 보장 범위·장애 시 동작, 실시간 주문 알림(SSE)·open-in-view 제외, 요청 처리 흐름, 테스트 |
 | [Kafka Outbox · 알림 이벤트](docs/kafka-outbox.md) | Transactional Outbox 도입 배경·설계 결정, 구현 중 발견한 문제, 검증 결과, 후속 과제 (#42) |
-| [로컬 확인 가이드](docs/local-verification.md) | Redis·Kafka 동작을 자동 테스트와 로컬 실행으로 확인하는 절차 (멱등성 재전송·장애, Outbox 발행·재발행·DLT, DLT 재처리 CLI, 메트릭), 주문 목록 keyset·prod 프로필·DB 타임아웃 확인 (#54), CORS 확인 (#61), Slack 알림 발송 확인 (#69), 실시간 주문 알림 compose 확인 (#76), 토스 결제·가짜 PG·부분 환불 확인 (#78), 소셜 로그인 (V22), 비밀번호 찾기·변경·데모 데이터 (#90) |
+| [로컬 확인 가이드](docs/local-verification.md) | Redis·Kafka 동작을 자동 테스트와 로컬 실행으로 확인하는 절차 (멱등성 재전송·장애, Outbox 발행·재발행·DLT, DLT 재처리 CLI, 메트릭), 주문 목록 keyset·prod 프로필·DB 타임아웃 확인 (#54), CORS 확인 (#61), Slack 알림 발송 확인 (#69), 실시간 주문 알림 compose 확인 (#76), 토스 결제·가짜 PG·부분 환불 확인 (#78), 소셜 로그인 (V22), 비밀번호 찾기·변경·이메일 인증·데모 데이터 (#90) |
 | [API 명세](docs/api.md) | API 목록, 주문 상태 흐름, API별 요청·응답·에러 코드, 토스페이먼츠 결제·부분 환불 (#78) |
 | [ERD](docs/erd.md) | ERD 다이어그램, 테이블 간 관계 |
 | [데이터베이스](docs/database.md) | Flyway 마이그레이션, 테이블 상세·제약조건, 시간대, 결제 연관관계 |
@@ -196,8 +196,8 @@ flowchart LR
 | `DB_PORT` | - | docker-compose가 PostgreSQL을 호스트(127.0.0.1)에 여는 포트 (기본 5432) |
 | `DB_POOL_SIZE` · `DB_LOCK_TIMEOUT` · `DB_STATEMENT_TIMEOUT` | - | 커넥션 풀 크기(기본 10), 잠금 대기(기본 5s)·문장 실행(기본 30s) 타임아웃 — [운영 프로필 6장](docs/operations.md) |
 | `GRAFANA_ADMIN_PASSWORD` | monitoring | Grafana admin 비밀번호. `--profile monitoring`에서 필수 (빈 값·`admin`이면 Grafana만 기동 실패) |
-| `MAIL_SENDER` | - | 비밀번호 찾기 메일 (V23): `log`(기본, 링크를 앱 로그로) / `brevo`(실제 발송) / `none`(끔 → 비밀번호 찾기 503). prod 기본 `none`, prod에서 `log`는 기동 실패 |
-| `BREVO_API_KEY` · `MAIL_FROM_ADDRESS` · `PASSWORD_RESET_URL` | brevo일 때 | Brevo API 키, Brevo에서 인증한 발신 주소, 메일 링크가 여는 프론트 화면(기본 `http://localhost:5173/password-reset`) — [운영 프로필 9-7](docs/operations.md) |
+| `MAIL_SENDER` | - | 비밀번호 찾기·이메일 인증 메일 (V23·V24): `log`(기본, 링크를 앱 로그로) / `brevo`(실제 발송) / `none`(끔 → 비밀번호 찾기·이메일 등록 503). prod 기본 `none`, prod에서 `log`는 기동 실패 |
+| `BREVO_API_KEY` · `MAIL_FROM_ADDRESS` · `PASSWORD_RESET_URL` · `EMAIL_VERIFICATION_URL` | brevo일 때 | Brevo API 키, Brevo에서 인증한 발신 주소, 메일 링크가 여는 프론트 화면(기본 `http://localhost:5173/password-reset`, `.../email-verification` — V24) — [운영 프로필 9-7](docs/operations.md) |
 | `DEMO_DATA_ENABLED` · `DEMO_PASSWORD` · `DEMO_ADMIN_PASSWORD` | - | 기동 시 데모 회원·매장·메뉴·주문을 한 번만 생성 (기본 꺼짐). 공개 계정 비밀번호 / 비공개 관리자 비밀번호 — [운영 프로필 9-6](docs/operations.md) |
 
 ### 프로필

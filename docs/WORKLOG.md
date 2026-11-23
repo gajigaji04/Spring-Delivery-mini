@@ -15,6 +15,12 @@ CLAUDE.md에서 옮긴 진행 상황·다음 작업·남은 후속 기록(2026-1
     `PasswordResetService`·`UserService.changePassword/changeEmail`, `mail` 패키지(none·log·brevo), `DemoDataSeeder`(`demo-data.*`), `ProdProfileGuard` 메일 검사,
     프론트 `/password-reset`·로그인 "비밀번호를 잊으셨나요?"·가입 이메일·내 정보 이메일/비밀번호 폼. 문서 `docs/operations.md` 9-2·9-6·9-7, api·architecture·database·erd
   - 사용자 할 일: 커밋·main 반영 → Render 환경변수(소셜·`MAIL_*`·`BREVO_API_KEY`·`PASSWORD_RESET_URL`·`DEMO_*`) → Brevo 발신 주소 인증 → Vercel `VITE_DEMO_ACCOUNTS`·프로덕션 도메인 → 카카오·구글 Redirect URI → 9-5 확인
+- 2026-11-23 **이메일 소유권 인증** (같은 브랜치, 미커밋) — V24(`users.email_verified_at`, `email_verification_tokens`)
+  - `EmailVerificationService`: 가입·내 정보의 이메일은 인증 링크(`/email-verification#token=`, 24시간·1회·해시 저장)를 열어야 `users.email`로 확정, 대기 주소는 선점 불가
+  - 비밀번호 찾기는 인증된 주소만(미인증도 같은 202). V23 기존 주소는 미인증 → 같은 주소 재입력으로 인증. 1분 재요청 간격 429, 발송 꺼짐 503
+  - `POST /api/users/email-verification/confirm`(permitAll), `MyInfoResponse.emailVerified·pendingEmail`, 프론트 `EmailVerificationPage`(버튼으로 인증)
+  - **Render 추가 환경변수: `EMAIL_VERIFICATION_URL=https://{프론트}/email-verification`** (`MAIL_SENDER=brevo`면 prod 점검 필수)
+  - 테스트: 백엔드 113클래스 985건, 프론트 81건·빌드 통과
 
 ## 진행 상황 (#78 머지 완료(PR #82) / 소셜 로그인 + 포트폴리오 보강 커밋 완료(`60e0136`)·푸시·PR 전 — 브랜치 `feat/79-social-login`, 2026-11-22)
 - 완료: 매장·메뉴·주문, 결제(수수료), 일 정산 집계·확정·지급, 취소·환불·이월(#30), 매장별 수수료율(#32),

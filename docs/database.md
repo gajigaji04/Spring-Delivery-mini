@@ -31,6 +31,7 @@
 | `V21__add_partial_refunds.sql` | 부분 환불: `payment_refunds`(결제 1 : 환불 N) 생성, `payments.refunded_amount`·상태 `PARTIALLY_REFUNDED`(상태↔누적 환불액 CHECK), 기존 전액 환불을 환불 1건씩으로 **백필**하고 `settlement_refunds`를 `payment_refund_id`(UNIQUE)로 연결, `payment_id` UNIQUE 제거, 쓰지 않게 된 `idx_payments_refunded_at` 삭제. 주문 1 : 결제 1(`order_id` UNIQUE)은 유지 (`PartialRefundMigrationTest`) |
 | `V22__add_social_accounts.sql` | 소셜 로그인: `users.password` NOT NULL 해제(소셜 전용 회원은 NULL, 기존 행 변경 없음), `social_accounts`(FK → users, `(provider, provider_user_id)`·`(user_id, provider)` UNIQUE) |
 | `V23__add_user_email_and_password_reset_tokens.sql` | 비밀번호 찾기·변경: `users.email`(NULL 허용, UNIQUE, 소문자 CHECK — 기존 행 변경 없음), `password_reset_tokens`(FK → users, `token_hash` UNIQUE, `(user_id, created_at)` 인덱스), `refresh_tokens.revoke_reason`에 `PASSWORD_CHANGED` 추가, `idx_refresh_tokens_user_active (user_id) WHERE revoked_at IS NULL` |
+| `V24__add_email_verification.sql` | 이메일 인증: `users.email_verified_at`(NULL 허용 — 기존 이메일은 미인증으로 남음, 주소 없이 인증 시각만 있으면 CHECK 위반), `email_verification_tokens`(FK → users, 인증할 `email` 소문자 CHECK, `token_hash` UNIQUE, `(user_id, created_at)` 인덱스) (`EmailVerificationMigrationTest`) |
 | `V18__split_order_delivery_address.sql` | 배송 주소 분리(#77): `orders.zip_code varchar(5)`·`road_address varchar(150)`·`detail_address varchar(100)` 추가(NULL 허용, 기본값 없음 → 기존 행 재작성 없음) + `orders_address_parts_check`(셋 다 NULL이거나, 우편번호 숫자 5자리 + 도로명 있음). 기존 주문은 `delivery_address`만 유지하고 세 컬럼은 NULL(백필 안 함 — 한 줄 주소를 안전하게 나눌 수 없음) |
 
 - **빈 DB**: 애플리케이션 기동 시 V1부터 순서대로 실행
@@ -62,7 +63,8 @@
 | username | varchar(20) | NOT NULL, UNIQUE | 로그인 아이디 |
 | password | varchar(255) | NULL 허용 (V22) | BCrypt 해시값. 소셜 전용 회원은 NULL → 아이디·비밀번호 로그인 불가 |
 | role | varchar(255) | NOT NULL | `CUSTOMER` / `OWNER` / `ADMIN`. 가입은 `CUSTOMER`만(V17), `OWNER`는 사장님 전환 승인으로만(`owner_applications`), `ADMIN`은 DB에서 직접 지정 |
-| email | varchar(255) | NULL 허용, UNIQUE `uk_users_email`, CHECK 소문자 (V23) | 비밀번호 찾기 메일 주소. 앞뒤 공백 제거·소문자로 저장 → 한 주소 = 한 회원 |
+| email | varchar(255) | NULL 허용, UNIQUE `uk_users_email`, CHECK 소문자 (V23) | 비밀번호 찾기 메일 주소. 앞뒤 공백 제거·소문자로 저장 → 한 주소 = 한 회원. V24부터 인증 링크를 열 때만 바뀜 |
+| email_verified_at | timestamp(6) | NULL 허용, CHECK `email_verified_at IS NULL OR email IS NOT NULL` (V24) | 이메일 인증 시각. NULL이면 미인증(V24 이전 등록) → 비밀번호 찾기에 쓰이지 않음 |
 | created_at | timestamp | | 가입 시각 (BaseEntity, 이후 변경 불가) |
 | updated_at | timestamp | | 마지막 정보 수정 시각 (BaseEntity) |
 
@@ -399,6 +401,19 @@
 
 > 인덱스: `idx_password_reset_tokens_user_created (user_id, created_at)` — 재요청 간격(1분) 확인·쓸 수 있는 링크 무효화
 > 통합 테스트는 `password_reset_tokens`를 users보다 먼저 삭제. 만료 행 정리는 아직 없음(행이 작고 요청 간격 제한이 있어 후속)
+
+### email_verification_tokens — 이메일 인증 링크 (V24)
+| 컬럼 | 타입 | 제약 | 설명 |
+|---|---|---|---|
+| id | bigint | PK | |
+| user_id | bigint | NOT NULL, FK → users | |
+| email | varchar(255) | NOT NULL, CHECK 소문자 | 인증이 끝나면 `users.email`이 될 주소. 대기 중에는 UNIQUE를 차지하지 않음 |
+| token_hash | varchar(64) | NOT NULL, UNIQUE | 링크 토큰의 SHA-256(hex) — 원문은 메일에만 |
+| created_at · expires_at | timestamp(6) | NOT NULL, CHECK `expires_at > created_at` | 발급 시각·만료(발급 + 24시간) |
+| used_at | timestamp(6) | NULL 허용 | 더 쓸 수 없게 된 시각 — 인증 사용·새 링크 발급·변경 취소 |
+
+> 인덱스: `idx_email_verification_tokens_user_created (user_id, created_at)` — 재요청 간격(1분)·대기 주소 조회·무효화
+> 통합 테스트는 `email_verification_tokens`를 users보다 먼저 삭제. 만료 행 정리는 아직 없음(재설정 토큰과 같은 후속)
 
 ## 결제 연관관계: `@OneToOne` vs `@ManyToOne`
 

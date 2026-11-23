@@ -22,12 +22,15 @@ import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 
@@ -41,6 +44,7 @@ class UserServiceTest {
     @Mock private AuthTokenService authTokenService;
     @Mock private PasswordResetTokenRepository passwordResetTokenRepository;
     @Mock private DemoDataProperties demoDataProperties; // 기본 false → 공개 데모 계정 아님
+    @Mock private EmailVerificationService emailVerificationService; // 대기 중인 주소 없음(null)
 
     @InjectMocks
     private UserService userService;
@@ -153,5 +157,49 @@ class UserServiceTest {
         assertThatThrownBy(() -> userService.changeEmail("customer1", new EmailChangeRequest("me@example.com", null)))
                 .isInstanceOf(ApiException.class)
                 .extracting("code").isEqualTo(ErrorCode.INVALID_CURRENT_PASSWORD);
+    }
+
+    // ===== 이메일 인증 (V24) — 주소는 인증 링크를 열어야 확정 (EmailVerificationService) =====
+
+    @Test
+    void 가입할_때_입력한_이메일은_바로_저장하지_않고_인증_메일을_요청한다() {
+        userService.signup(new SignupRequest("customer1", "password123", null, " New@Example.com "));
+
+        ArgumentCaptor<User> saved = ArgumentCaptor.forClass(User.class);
+        verify(userRepository).saveAndFlush(saved.capture());
+        assertThat(saved.getValue().getEmail()).isNull();
+        verify(emailVerificationService).requestForNewUser(saved.getValue(), "new@example.com");
+    }
+
+    @Test
+    void 이메일을_바꾸면_새_주소를_인증할_때까지_기존_주소를_유지한다() {
+        User user = verifiedUser("old@example.com");
+        given(passwordEncoder.matches("password123", "encoded")).willReturn(true);
+
+        userService.changeEmail("customer1", new EmailChangeRequest("new@example.com", "password123"));
+
+        verify(emailVerificationService).request(user, "new@example.com");
+        assertThat(user.getEmail()).isEqualTo("old@example.com");
+        assertThat(user.isEmailVerified()).isTrue();
+    }
+
+    @Test
+    void 인증된_지금_주소를_다시_입력하면_진행_중인_변경을_취소하고_메일은_보내지_않는다() {
+        User user = verifiedUser("old@example.com");
+        given(passwordEncoder.matches("password123", "encoded")).willReturn(true);
+
+        userService.changeEmail("customer1", new EmailChangeRequest("OLD@example.com", "password123"));
+
+        verify(emailVerificationService).cancelPending(user.getId());
+        verify(emailVerificationService, never()).request(any(), any());
+    }
+
+    private User verifiedUser(String email) {
+        User user = new User("customer1", "encoded", Role.CUSTOMER);
+        ReflectionTestUtils.setField(user, "id", 1L);
+        user.verifyEmail(email, LocalDateTime.of(2026, 11, 23, 12, 0));
+        given(userRepository.findByUsernameForUpdate("customer1")).willReturn(Optional.of(user));
+        given(userRepository.findByUsername("customer1")).willReturn(Optional.of(user));
+        return user;
     }
 }

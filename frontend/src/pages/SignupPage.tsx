@@ -22,7 +22,8 @@ export default function SignupPage() {
     setError(null);
     try {
       await authApi.signup(username, password, email.trim() || undefined);
-      notify('가입했어요. 로그인해 주세요');
+      // 이메일은 인증 메일의 링크를 열어야 등록됨 (V24)
+      notify(email.trim() ? '가입했어요. 메일함의 인증 링크를 열어 이메일을 인증해 주세요' : '가입했어요. 로그인해 주세요');
       navigate('/login');
     } catch (err) {
       setError(err);

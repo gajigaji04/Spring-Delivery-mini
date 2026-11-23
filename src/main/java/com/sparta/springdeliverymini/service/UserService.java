@@ -35,8 +35,9 @@ public class UserService {
     private final StoreRepository storeRepository; // 내 정보 조회의 OWNER 매장 id 목록 (#62)
     private final PasswordEncoder passwordEncoder; // SecurityConfig에 등록한 BCryptPasswordEncoder
     private final AuthTokenService authTokenService; // 로그인 성공 시 Access·Refresh Token 발급
-    private final PasswordResetTokenRepository passwordResetTokenRepository; // 비밀번호·이메일 변경 시 재설정 링크 무효화 (V23)
+    private final PasswordResetTokenRepository passwordResetTokenRepository; // 비밀번호 변경 시 재설정 링크 무효화 (V23)
     private final DemoDataProperties demoDataProperties; // 공개 데모 계정은 비밀번호·이메일 변경 불가
+    private final EmailVerificationService emailVerificationService; // 이메일은 인증 메일 링크를 열어야 확정 (V24)
     private final Clock clock;
 
     @Transactional
@@ -57,6 +58,7 @@ public class UserService {
             throw new ApiException(HttpStatus.CONFLICT, "이미 사용 중인 아이디입니다.");
         }
         // 이메일(선택, V23) 중복 — 한 주소 = 한 회원 (재설정 링크가 어느 회원 것인지 하나로 정해지도록)
+        // 이미 다른 회원의 주소(users.email)면 409. 인증 대기 중인 주소는 막지 않음 — 먼저 인증한 쪽만 확정 (V24)
         String email = User.normalizeEmail(request.email());
         if (email != null && userRepository.existsByEmail(email)) {
             throw emailAlreadyUsed();
@@ -69,8 +71,8 @@ public class UserService {
 
         // 3. 회원 생성
         // 가입 회원은 항상 CUSTOMER (위에서 다른 값은 거절)
+        // 이메일은 여기서 저장하지 않음 — 인증 메일의 링크를 열어야 users.email이 됨 (V24, 아래 5번)
         User user = new User(request.username(), encodedPassword, Role.CUSTOMER);
-        user.changeEmail(email);
 
         // 4. DB에 저장
         // 동시에 같은 아이디로 가입하면 1번 검사를 둘 다 통과할 수 있음
@@ -83,7 +85,12 @@ public class UserService {
             throw new ApiException(HttpStatus.CONFLICT, "이미 사용 중인 아이디입니다.");
         }
 
-        // 5. 응답 DTO로 변환
+        // 5. 이메일을 입력했으면 인증 메일 (커밋 뒤 발송, 발송이 꺼져 있으면 건너뜀)
+        if (email != null) {
+            emailVerificationService.requestForNewUser(user, email);
+        }
+
+        // 6. 응답 DTO로 변환
         // 응답에는 비밀번호를 포함하지 않음 (id, username, role만)
         return UserResponse.from(user);
     }
@@ -102,7 +109,8 @@ public class UserService {
                 ? storeRepository.findIdsByOwnerId(user.getId())
                 : List.of();
 
-        return MyInfoResponse.of(user, storeIds, demoDataProperties.isPublicDemoAccount(user.getUsername()));
+        return MyInfoResponse.of(user, storeIds, demoDataProperties.isPublicDemoAccount(user.getUsername()),
+                emailVerificationService.pendingEmail(user.getId()));
     }
 
     // 쓰기 트랜잭션: Refresh Token 행을 저장함 (클래스 기본값은 읽기 전용)
@@ -146,8 +154,11 @@ public class UserService {
     }
 
     // 이메일 등록·변경 (V23) — 비밀번호가 있으면 현재 비밀번호 확인 (EmailChangeRequest 주석)
-    // 주소 소유 확인 메일은 보내지 않음: 남의 주소를 등록해도 재설정 링크가 그 주소로 갈 뿐 이 계정을 넘겨주지 않음
-    //   (한계: 다른 사람이 내 주소를 먼저 등록하면 나는 그 주소를 못 씀 — docs/architecture.md 인증 장)
+    // V24: 바로 바꾸지 않고 새 주소로 인증 메일만 보냄 → 링크를 열어야 확정 (EmailVerificationService.confirm)
+    //   - 인증 전까지 지금 주소(인증된 주소)는 그대로 → 변경 중에도 비밀번호 찾기 가능
+    //   - 미인증 주소(V24 이전 등록)를 그대로 다시 입력하면 그 주소로 인증 메일 (기존 회원의 인증 경로)
+    //   - 인증된 지금 주소를 다시 입력하면 진행 중인 변경 취소
+    //   응답의 pendingEmail로 인증 대기 중인 주소를 보여 줌
     @Transactional
     public MyInfoResponse changeEmail(String username, EmailChangeRequest request) {
         User user = findForUpdate(username);
@@ -155,19 +166,15 @@ public class UserService {
         verifyCurrentPassword(user, request.currentPassword());
 
         String email = User.normalizeEmail(request.email());
-        if (!Objects.equals(email, user.getEmail())) {
-            if (userRepository.existsByEmail(email)) {
+        boolean sameAsCurrent = Objects.equals(email, user.getEmail());
+        if (sameAsCurrent && user.isEmailVerified()) {
+            emailVerificationService.cancelPending(user.getId());
+        } else {
+            // 다른 회원이 이미 쓰는 주소는 메일을 보내기 전에 409 (인증 시점에도 한 번 더 확인 — DB UNIQUE가 최종 근거)
+            if (!sameAsCurrent && userRepository.existsByEmail(email)) {
                 throw emailAlreadyUsed();
             }
-            user.changeEmail(email);
-            try {
-                userRepository.saveAndFlush(user);
-            } catch (DataIntegrityViolationException e) {
-                // 동시에 같은 주소를 등록 — DB UNIQUE가 최종 근거
-                throw emailAlreadyUsed();
-            }
-            // 이전 주소로 보낸 링크는 더 쓸 수 없게 함 (flush 뒤에 실행 — 이 UPDATE의 자동 flush에서 제약 위반이 나지 않도록)
-            passwordResetTokenRepository.invalidateActive(user.getId(), LocalDateTime.now(clock));
+            emailVerificationService.request(user, email);
         }
         return getMyInfo(username);
     }

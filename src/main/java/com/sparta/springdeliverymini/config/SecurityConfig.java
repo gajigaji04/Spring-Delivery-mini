@@ -74,6 +74,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/users/refresh", "/api/users/logout").permitAll()
                         // 비밀번호 찾기 (V23) — 로그인할 수 없는 사람이 쓰는 기능. 남용 방지는 회원별 재요청 간격(PasswordResetService)
                         .requestMatchers(HttpMethod.POST, "/api/users/password-reset", "/api/users/password-reset/confirm").permitAll()
+                        // 이메일 인증 (V24) — 메일 링크는 로그인하지 않은 브라우저에서도 열림. 권한은 1회용 토큰 자체
+                        .requestMatchers(HttpMethod.POST, "/api/users/email-verification/confirm").permitAll()
 
                         // 소셜 로그인 (V22) — 시작(/oauth2/authorization/*)·콜백(/login/oauth2/code/*)은 Spring Security 필터가 먼저 처리
                         // 꺼진 공급자의 시작 요청은 필터를 그냥 지나가 404가 되도록 허용. 버튼 표시용 공급자 목록도 토큰 없이

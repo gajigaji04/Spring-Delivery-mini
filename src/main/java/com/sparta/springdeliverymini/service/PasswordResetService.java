@@ -26,7 +26,7 @@ import java.util.regex.Pattern;
 
 // 비밀번호 찾기(이메일 재설정 링크) — docs/architecture.md 인증 장 "비밀번호 재설정", docs/api.md 비밀번호 장
 //
-// 1. 요청: 이메일 → 가입된 주소면 1회용 링크(무작위 256비트 토큰, 30분)를 메일로. 응답은 가입 여부와 관계없이 항상 202
+// 1. 요청: 이메일 → 가입되고 인증된 주소(V24, EmailVerificationService)면 1회용 링크(무작위 256비트 토큰, 30분)를 메일로. 응답은 가입 여부와 관계없이 항상 202
 //    - 응답 본문·시간으로 "이 이메일이 가입돼 있다"를 알 수 없게 함 (발송은 커밋 뒤 전용 스레드, PasswordResetMailer)
 //    - 같은 회원에게는 resend-cooldown(1분) 안에 다시 보내지 않음 (메일 폭탄·발송 한도 소진 방지) — 이때도 같은 202
 //    - 새 링크를 발급하면 이전 링크는 무효 → 가장 최근 메일의 링크만 쓸 수 있음
@@ -67,6 +67,12 @@ public class PasswordResetService {
             return;
         }
         User user = found.get();
+        // 인증되지 않은 주소(V24 이전에 확인 없이 등록)로는 보내지 않음 — 응답은 없는 주소와 같은 202 (V24)
+        // 그 주소가 회원 본인 것인지 확인된 적이 없어 계정 복구 수단으로 믿을 수 없음
+        if (!user.isEmailVerified()) {
+            log.info("인증되지 않은 이메일 — 비밀번호 재설정 메일 건너뜀 userId={}", user.getId());
+            return;
+        }
         LocalDateTime now = LocalDateTime.now(clock);
 
         // 재요청 간격 — 회원 행 잠금 안에서 확인하므로 동시 요청이 함께 통과하지 않음

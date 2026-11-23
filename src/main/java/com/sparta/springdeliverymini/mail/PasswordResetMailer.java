@@ -17,6 +17,7 @@ import java.util.concurrent.TimeUnit;
 //   (가입 여부와 관계없이 바로 202). 큐가 차면 버림(로그만) — 호출 스레드에서 대신 보내면 응답 시간 차이가 다시 생김
 // - 실패는 로그만 남기고 재시도하지 않음: 사용자가 링크를 다시 요청하면 됨 (재요청 간격 제한은 PasswordResetService)
 // - Executor를 빈으로 두지 않음 — 등록하면 Spring Boot 기본 applicationTaskExecutor가 만들어지지 않음
+// - 이메일 인증 메일(V24)도 같은 스레드·같은 규칙으로 보냄 (purpose는 로그 구분용) — 발송 스레드를 하나로 유지
 @Slf4j
 @Component
 public class PasswordResetMailer {
@@ -35,31 +36,36 @@ public class PasswordResetMailer {
                     t.setDaemon(true);
                     return t;
                 },
-                (r, pool) -> log.warn("메일 발송 대기열이 가득 차 비밀번호 재설정 메일을 보내지 못함"));
+                (r, pool) -> log.warn("메일 발송 대기열이 가득 차 메일을 보내지 못함"));
     }
 
     // 트랜잭션 안이면 커밋 뒤에, 밖이면 바로 발송을 예약
     public void sendAfterCommit(Long userId, EmailMessage message) {
+        sendAfterCommit("비밀번호 재설정", userId, message);
+    }
+
+    // purpose: 로그에 남길 메일 종류 (예: "이메일 인증")
+    public void sendAfterCommit(String purpose, Long userId, EmailMessage message) {
         if (TransactionSynchronizationManager.isSynchronizationActive()) {
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override
                 public void afterCommit() {
-                    submit(userId, message);
+                    submit(purpose, userId, message);
                 }
             });
         } else {
-            submit(userId, message);
+            submit(purpose, userId, message);
         }
     }
 
-    private void submit(Long userId, EmailMessage message) {
+    private void submit(String purpose, Long userId, EmailMessage message) {
         executor.execute(() -> {
             try {
                 emailSender.send(message);
-                log.info("비밀번호 재설정 메일 발송 userId={}", userId);
+                log.info("{} 메일 발송 userId={}", purpose, userId);
             } catch (RuntimeException e) {
                 // 메시지에는 API 키·주소가 없음 (EmailSendException 규칙). 그 밖의 예외도 종류·메시지만
-                log.warn("비밀번호 재설정 메일 발송 실패 userId={}: {}", userId, e.getMessage());
+                log.warn("{} 메일 발송 실패 userId={}: {}", purpose, userId, e.getMessage());
             }
         });
     }

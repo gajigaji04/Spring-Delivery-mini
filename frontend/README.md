@@ -109,6 +109,11 @@ npm run build             # tsc 타입 검사 + 프로덕션 빌드
 - 가입 화면 이메일(선택), 내 정보 `EmailSection`·`PasswordSection`: 비밀번호가 있으면 현재 비밀번호 입력, 소셜 전용 회원(`hasPassword: false`)은 "비밀번호 설정". 비밀번호 변경은 **`credentials: 'include'`**로 Refresh 쿠키를 보내 지금 기기 로그인만 남김
 - 공개 데모 계정(`me.demoAccount`)은 두 폼을 숨김 (서버도 403 `DEMO_ACCOUNT_PROTECTED`)
 
+## 이메일 인증 (V24)
+- 가입·내 정보 `EmailSection`의 이메일은 바로 바뀌지 않고 인증 메일 발송 → 내 정보에 `pendingEmail`('인증 대기'), 미인증 주소(`emailVerified: false`)는 '미인증' 표시
+- 메일 링크 `/email-verification#token=...` → `pages/EmailVerificationPage`: 토큰을 읽고 주소창에서 지움, **'이메일 인증하기' 버튼을 눌러야** 호출(메일 검사기의 미리 열기로 토큰이 쓰이지 않도록). 로그인 없이 동작, 로그인 상태면 성공 후 `reloadMe`
+- Vercel은 기존 `/(.*) → /index.html` rewrite로 처리 (vercel.json 변경 없음)
+
 ## 서버 깨우기 (무료 배포, 2026-11-23)
 무료 호스팅(Render)은 유휴 시 서버를 재우고 다음 요청 때 다시 띄움(0.1 CPU 로컬 측정 최대 약 5분, `docs/operations.md` 9장)
 - 앱 시작 시 `serverWake.ensureAwake()`(`api/serverWake.ts`, `api/client.ts`)가 공개 GET `/api/users/social/providers`로 서버 응답 확인. 2초 안에 응답하면 아무것도 표시하지 않음

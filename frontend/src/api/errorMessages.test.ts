@@ -10,6 +10,11 @@ describe('userMessage', () => {
     expect(userMessage(new ApiError(503, '...', 'PAYMENT_UNAVAILABLE', null))).toContain('결제되지 않았습니다');
   });
 
+  it('이메일 인증 오류(V24)는 다시 요청하는 방법을 안내한다', () => {
+    expect(userMessage(new ApiError(400, '...', 'EMAIL_VERIFICATION_TOKEN_INVALID', null))).toContain('다시 요청');
+    expect(userMessage(new ApiError(429, '...', 'EMAIL_VERIFICATION_TOO_FREQUENT', null))).toContain('1분 뒤');
+  });
+
   it('모르는 코드나 코드 없는 오류는 서버 문구를 그대로 쓴다', () => {
     expect(userMessage(new ApiError(403, '본인의 주문만 결제할 수 있습니다.', null, null))).toBe('본인의 주문만 결제할 수 있습니다.');
     expect(userMessage(new ApiError(400, '서버 문구', 'SOMETHING_NEW', null))).toBe('서버 문구');
