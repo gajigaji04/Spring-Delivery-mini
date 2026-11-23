@@ -52,7 +52,8 @@ class OutboxPublisherTest {
                         Duration.ofSeconds(1), Duration.ofMinutes(5), Duration.ofMillis(200)),
                 new OutboxProperties.Consumer(3, Duration.ofSeconds(1)));
         Clock clock = Clock.fixed(NOW.atZone(TimeConfig.ZONE).toInstant(), TimeConfig.ZONE);
-        publisher = new OutboxPublisher(outboxEventRepository, kafkaTemplate, properties, clock);
+        // 기본 전달 방법(Kafka) 그대로 검증 — 전달만 KafkaOutboxSender로 분리됨
+        publisher = new OutboxPublisher(outboxEventRepository, new KafkaOutboxSender(kafkaTemplate, properties), properties, clock);
     }
 
     private static OutboxEvent event(long orderId) {

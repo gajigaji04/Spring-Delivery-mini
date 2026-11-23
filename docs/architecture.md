@@ -497,6 +497,14 @@ docker compose run --rm app --spring.profiles.active=dev,dlt-reprocess --all
 - **중복 알림 방지의 최종 근거는 Consumer의 `consumed_events`**: 전송 성공 후 커밋 전에 죽거나, 지정 재처리로 같은 건을 또 보내도 알림은 한 번
 - 재처리 대상(파티션·오프셋·`kafka_dlt-*` 헤더) 확인과 로컬 수동 시나리오는 [로컬 확인 가이드 2-4](local-verification.md#2-4-kafka--dlt-재처리-52)
 
+### direct 전달 (Kafka 없는 무료 배포, `outbox.delivery=direct`, 2026-11-23)
+무료 시연 배포(`prod-free`, `docs/operations.md` 9장)는 Kafka를 띄울 수 없어, 전달 단계만 바꿈 (`event.OutboxSender`)
+- `KafkaOutboxSender`(기본 `kafka`): 지금까지의 Kafka 발행 그대로 / `DirectOutboxSender`(`direct`): `NotificationEventListener`와 같은 규칙으로 본문을 해석해 `NotificationService.handle()`을 **별도 트랜잭션(REQUIRES_NEW)** 으로 호출
+- 같은 점: Outbox 저장(업무 트랜잭션), `FOR UPDATE SKIP LOCKED`, 순서 보장, 발행 백오프·FAILED·관리자 재발행, `consumed_events` 중복 제거, 커밋 후 SSE
+- 다른 점: Consumer 재시도·DLT 대신 발행 재시도(최대 10번) 후 `FAILED`. 형식 오류도 같은 경로(DLT 없음). 바로 실패하면 그 주기의 나머지는 다음 주기로(기존 Kafka 접속 실패와 같은 규칙)
+- 별도 트랜잭션인 이유: 발행 트랜잭션에 합류하면 알림 처리 예외가 바깥 트랜잭션을 rollback-only로 만들어 실패 기록까지 롤백됨. 알림 커밋 뒤 발행 결과 기록이 실패하면 다시 전달되고 `consumed_events`가 걸러냄(최소 한 번 전달)
+- 테스트: `DirectOutboxSenderTest`, `ProdFreeProfileIntegrationTest`(Kafka 없이 기동·결제 → 알림 2건·재전달 중복 무시·정산 스케줄러 cron 등록)
+
 ### 후속 개선
 - **실제 발송 채널**: 운영 채널 Slack은 #69에서 연결. 받는 사람별 이메일·SMS·푸시 연동, 발송 `FAILED` 알림의 재발송 API, 발송을 행 잠금 트랜잭션 밖으로 분리(위 Slack 한계)
 - **대용량 정리**: 행 수가 크게 늘면 주기 삭제 대신 테이블 파티셔닝(파티션 DROP)

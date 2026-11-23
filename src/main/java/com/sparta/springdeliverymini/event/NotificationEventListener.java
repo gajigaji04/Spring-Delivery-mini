@@ -24,14 +24,15 @@ public class NotificationEventListener {
 
     @KafkaListener(id = "notification-listener", groupId = "notification", topics = "${outbox.topic}")
     public void onMessage(ConsumerRecord<String, String> record) {
-        DeliveryEventMessage message = parse(record.value());
+        DeliveryEventMessage message = parse(objectMapper, record.value());
         boolean saved = notificationService.handle(message);
         log.info("이벤트 수신 eventId={}, type={}, orderId={}, partition={}, offset={}, result={}",
                 message.eventId(), message.eventType(), message.orderId(), record.partition(), record.offset(),
                 saved ? "알림 저장" : "중복 무시");
     }
 
-    private DeliveryEventMessage parse(String value) {
+    // 본문 해석·검증 — outbox.delivery=direct일 때 DirectOutboxSender도 같은 규칙으로 해석하도록 공유
+    static DeliveryEventMessage parse(ObjectMapper objectMapper, String value) {
         if (value == null || value.isBlank()) {
             throw new InvalidEventMessageException("본문이 없는 메시지입니다.");
         }

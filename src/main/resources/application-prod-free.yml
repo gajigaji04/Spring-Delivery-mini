@@ -1,0 +1,44 @@
+# prod-free 프로필 — 무료 플랜 시연 배포(Render 무료 웹 서비스 + Neon + Upstash, docs/operations.md 9장)
+# 단독으로 쓰지 않고 prod 위에 덮어씀: SPRING_PROFILES_ACTIVE=prod,prod-free (뒤에 쓴 프로필 값이 이김)
+#   → prod의 점검(ProdProfileGuard)·오류 응답 숨김·API 문서 비활성은 그대로 적용
+# prod와 다른 점만 둠
+#   1. Kafka 없이 Outbox 이벤트를 같은 프로세스에서 알림 처리로 직접 전달 (무료로 상시 운영할 Kafka가 없음)
+#   2. 공개 포트가 하나뿐인 플랫폼에 맞춰 서비스 포트를 PORT 환경변수로, Actuator는 같은 포트에서 health만
+#   3. 무료 DB의 작은 연결 한도에 맞춰 커넥션 풀 축소
+# 필수 환경변수는 prod와 같되 KAFKA_BOOTSTRAP_SERVERS는 필요 없음
+# Redis TLS·비밀번호(Upstash 등)는 Spring Boot 표준 환경변수: SPRING_DATA_REDIS_SSL_ENABLED=true, SPRING_DATA_REDIS_PASSWORD
+spring:
+  datasource:
+    hikari:
+      # 기본 10 → 5: 무료 DB의 연결 한도 안에 두고, 0.1 CPU 인스턴스에서 동시 처리량도 이 정도면 충분
+      # direct 전달은 발행 트랜잭션 안에서 알림 처리 트랜잭션을 하나 더 열므로(REQUIRES_NEW) 2 이상이어야 함
+      maximum-pool-size: 5
+  kafka:
+    # prod의 ${KAFKA_BOOTSTRAP_SERVERS}(기본값 없음)를 덮어씀 — 접속하지 않으므로 값은 의미 없음
+    # (KafkaTemplate 등 빈은 남아 있지만 direct 전달에서는 쓰지 않음, 프로듀서는 처음 보낼 때 만들어지므로 접속도 없음)
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    # 알림 Consumer를 시작하지 않음 — 시작하면 없는 브로커에 계속 재접속을 시도하며 로그·CPU를 씀
+    listener:
+      auto-startup: false
+    # 기동 시 토픽 생성을 시도하지 않음 (기동 지연·오류 로그 방지)
+    admin:
+      auto-create: false
+
+server:
+  # 플랫폼이 넘겨주는 포트(PORT)에서 받음. 없으면 8080
+  port: ${PORT:8080}
+
+# Outbox 이벤트 전달 방법 (event.OutboxSender) — direct: Kafka 대신 NotificationService를 별도 트랜잭션으로 직접 호출
+outbox:
+  delivery: direct
+
+# Actuator — 관리 포트를 따로 열 수 없는 플랫폼이라 서비스 포트와 같은 값(PORT)으로 둠 → Boot가 서비스 서버에서 함께 제공
+#   (prod의 관리 포트 8081을 덮어씀. 빈 값으로 지우는 방식은 바인딩에서 지워지지 않아 별도 포트가 열림 — 테스트로 확인)
+# 공개는 health만: 플랫폼 헬스체크·서버 깨우기 확인용. 상세(show-details)는 prod 설정대로 숨김, prometheus는 노출하지 않음
+management:
+  server:
+    port: ${PORT:8080}
+  endpoints:
+    web:
+      exposure:
+        include: health

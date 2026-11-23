@@ -6,6 +6,9 @@ CLAUDE.md에서 옮긴 진행 상황·다음 작업·남은 후속 기록(2026-1
 - 2026-11-22 배포 #86(`feat/86-deploy-oracle-vercel`, 미커밋): `deploy/`(compose.prod.yml·Caddyfile·.env.prod.example), `frontend/vercel.json`(API_DOMAIN 자리표시자)·`.env.production`(같은 출처), `social.redirect-base-url`(SOCIAL_REDIRECT_BASE_URL), 프론트 `VITE_STREAM_BASE_URL`·상대 API 주소 지원, `docs/operations.md` 8장. 다음: 사용자 VM·Vercel 작업 → 배포 후 확인(8-7)
   - 전체 테스트 108클래스 949건 통과(Docker 켠 뒤), 프론트 70건·빌드 통과. PR 본문 전달(`Closes #86`, 대상 develop). 포트폴리오 문서(Claude Docs) 갱신: 테스트 949건, 한계 "배포 없음" → "배포 준비 단계(Oracle VM + Vercel, 실제 배포 전)". 배포가 실제로 끝나면 이 문서에 데모 주소를 넣고 한계 문구를 고칠 것
   - `vercel.json`의 `API_DOMAIN` 자리표시자는 VM 공인 IP를 받은 뒤 교체(sslip.io), VM 절차는 대화에서 단계별로 안내함(operations.md 8-2·8-3과 같음)
+- 2026-11-23 **배포 방향 전환**: #86 머지(PR #87) 후 Oracle A1 용량 부족이 계속돼 월 $0·카드 없는 무료 구성으로 변경 — Render Free(백엔드) + Neon Free(PG 18) + Upstash Free(Redis) + Vercel, Kafka 제외. 조사·비교·측정은 `docs/operations.md` 9장(8장 Oracle 구성은 A1 확보 시용으로 유지)
+  - 구현(미커밋, develop 위): `prod-free` 프로필(`application-prod-free.yml`, `prod,prod-free`로 사용), `event.OutboxSender`(Kafka/Direct) 분리, `ProdProfileGuard` direct 모드 Kafka 주소 면제, Dockerfile 주석(JVM 옵션은 `JAVA_TOOL_OPTIONS`), 프론트 서버 깨우기(`api/serverWake.ts`·`ServerWakeBanner`)
+  - 로컬 측정(512MB·0.1 CPU): prod-free 재기동 300초, 메모리 약 320MB. AppCDS는 Render 실측 후 결정(9-4). 다음: 사용자 커밋 → Neon·Upstash·Render·Vercel 생성 → 9-5 확인
 
 ## 진행 상황 (#78 머지 완료(PR #82) / 소셜 로그인 + 포트폴리오 보강 커밋 완료(`60e0136`)·푸시·PR 전 — 브랜치 `feat/79-social-login`, 2026-11-22)
 - 완료: 매장·메뉴·주문, 결제(수수료), 일 정산 집계·확정·지급, 취소·환불·이월(#30), 매장별 수수료율(#32),

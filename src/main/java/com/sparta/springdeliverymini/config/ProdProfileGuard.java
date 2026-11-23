@@ -11,7 +11,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 // prod 프로필 기동 전 점검 (#54, docs/operations.md)
-// - 필수 환경변수가 비어 있으면 기동 실패: DB·JWT는 원래 기동 중에 실패하지만, Redis·Kafka는 처음 쓸 때 접속하므로
+// - 필수 환경변수가 비어 있으면 기동 실패 (Kafka 직접 전달 모드면 KAFKA_BOOTSTRAP_SERVERS 제외): DB·JWT는 원래 기동 중에 실패하지만, Redis·Kafka는 처음 쓸 때 접속하므로
 //   주소가 빠져도 서버가 떠서 결제(멱등성)·이벤트 발행이 뒤늦게 실패함 → 배포 시점에 바로 드러나도록
 // - CORS 허용 출처(CORS_ALLOWED_ORIGINS)가 비어 있으면 기동 실패: 빈 목록이어도 서버는 정상 기동하고 브라우저 요청만 모두 403이 되어
 //   배포 후 프론트엔드에서야 드러나므로 (와일드카드·형식 오류는 CorsProperties 바인딩에서 막음)
@@ -28,8 +28,10 @@ public class
 
 ProdProfileGuard implements EnvironmentPostProcessor, Ordered {
 
+    static final String KAFKA_BOOTSTRAP_SERVERS = "KAFKA_BOOTSTRAP_SERVERS";
+
     static final List<String> REQUIRED_ENV = List.of(
-            "DB_URL", "DB_USERNAME", "DB_PASSWORD", "JWT_SECRET", "REDIS_HOST", "KAFKA_BOOTSTRAP_SERVERS",
+            "DB_URL", "DB_USERNAME", "DB_PASSWORD", "JWT_SECRET", "REDIS_HOST", KAFKA_BOOTSTRAP_SERVERS,
             "CORS_ALLOWED_ORIGINS");
 
     static final String SLACK_WEBHOOK_URL = "SLACK_WEBHOOK_URL";
@@ -57,7 +59,10 @@ ProdProfileGuard implements EnvironmentPostProcessor, Ordered {
     static void check(Environment environment) {
         List<String> problems = new ArrayList<>();
 
+        // Kafka 없이 직접 전달(outbox.delivery=direct, prod-free 프로필)이면 Kafka 주소는 쓰지 않으므로 필수에서 뺌
+        boolean directDelivery = usesDirectDelivery(environment);
         List<String> missing = new ArrayList<>(REQUIRED_ENV.stream()
+                .filter(name -> !(directDelivery && KAFKA_BOOTSTRAP_SERVERS.equals(name)))
                 .filter(name -> !StringUtils.hasText(environment.getProperty(name)))
                 .toList());
         // Slack 발송을 고른 경우에만 웹훅 URL 필수 (#69) — log 발송기는 URL이 필요 없음
@@ -91,6 +96,11 @@ ProdProfileGuard implements EnvironmentPostProcessor, Ordered {
 
     private static boolean usesSocialLogin(Environment environment) {
         return SOCIAL_CLIENT_IDS.stream().anyMatch(name -> StringUtils.hasText(environment.getProperty(name)));
+    }
+
+    // outbox.delivery: kafka(기본) | direct — 값 검사는 OutboxSender 빈 선택(@ConditionalOnProperty)에서 함
+    private static boolean usesDirectDelivery(Environment environment) {
+        return "direct".equalsIgnoreCase(environment.getProperty("outbox.delivery", "kafka").trim());
     }
 
     // notification.sender는 enum 바인딩(대소문자 무시) 전이라 문자열로 비교

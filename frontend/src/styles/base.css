@@ -1443,3 +1443,41 @@ dl.card dd {
     animation: none;
   }
 }
+
+/* 서버 깨우기 안내 (components/ServerWakeBanner) — 화면 맨 위에 고정, 본문을 가리지 않도록 얇게 */
+.wake-banner {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 10px 16px;
+  background: var(--tomato-soft);
+  color: var(--wait-fg);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  text-align: center;
+}
+.wake-banner--failed {
+  background: var(--wait-bg);
+}
+.wake-banner__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--tomato);
+  animation: wake-pulse 1.2s ease-in-out infinite;
+}
+@keyframes wake-pulse {
+  50% {
+    opacity: 0.3;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .wake-banner__dot {
+    animation: none;
+  }
+}

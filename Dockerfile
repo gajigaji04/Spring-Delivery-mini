@@ -21,5 +21,8 @@ USER app
 COPY --from=build /workspace/build/libs/*-SNAPSHOT.jar app.jar
 
 # 시간대는 SpringDeliveryMiniApplication.main에서 Asia/Seoul로 고정하므로 컨테이너 TZ와 무관
+# JVM 옵션은 이미지에 넣지 않고 실행 환경의 JAVA_TOOL_OPTIONS로 지정 (JVM이 직접 읽음)
+#   → compose(dev)는 기본값 그대로, 무료 배포(512MB·0.1 CPU, prod-free)만 메모리·기동 옵션 적용 (docs/operations.md 9장)
+# 포트: compose·prod는 8080, prod-free는 플랫폼이 주는 PORT (EXPOSE는 문서용이라 실제 포트와 달라도 동작에 영향 없음)
 EXPOSE 8080
 ENTRYPOINT ["java", "-jar", "/app/app.jar"]

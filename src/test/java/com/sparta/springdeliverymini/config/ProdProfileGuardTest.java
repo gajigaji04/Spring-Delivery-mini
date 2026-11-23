@@ -120,4 +120,30 @@ class ProdProfileGuardTest {
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("toss.payments.mode=fake");
     }
+
+    // 무료 배포(prod-free, outbox.delivery=direct)는 Kafka에 접속하지 않으므로 주소가 없어도 통과, 나머지 필수 값은 그대로 검사
+    @Test
+    void Kafka_직접_전달_모드면_Kafka_주소_없이_통과하고_다른_필수_값은_계속_검사한다() {
+        MockEnvironment environment = completeEnvironment();
+        environment.setProperty("KAFKA_BOOTSTRAP_SERVERS", "");
+        environment.setProperty("outbox.delivery", "direct");
+        assertThatCode(() -> ProdProfileGuard.check(environment)).doesNotThrowAnyException();
+
+        environment.setProperty("REDIS_HOST", "");
+        assertThatThrownBy(() -> ProdProfileGuard.check(environment))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("필수 환경변수가 없습니다: REDIS_HOST")
+                .hasMessageNotContaining("KAFKA_BOOTSTRAP_SERVERS");
+    }
+
+    @Test
+    void 기본_Kafka_전달_모드에서는_Kafka_주소가_없으면_기동을_막는다() {
+        MockEnvironment environment = completeEnvironment();
+        environment.setProperty("KAFKA_BOOTSTRAP_SERVERS", "");
+        environment.setProperty("outbox.delivery", "kafka");
+
+        assertThatThrownBy(() -> ProdProfileGuard.check(environment))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("필수 환경변수가 없습니다: KAFKA_BOOTSTRAP_SERVERS");
+    }
 }

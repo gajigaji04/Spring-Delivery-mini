@@ -147,7 +147,9 @@ settlement:
 #   max-attempts: 이 횟수만큼 실패하면 FAILED (자동 재시도 중단, 운영자 확인 대상)
 #   재시도 간격 = min(initial-backoff × 2^(실패 횟수-1), max-backoff) → 1s, 2s, 4s ... 최대 5분 (10번이면 약 13분간 재시도)
 # consumer: 알림 Consumer 처리 실패 시 retry-interval 간격으로 retry-attempts번 재시도 후 DLT
+# delivery: 이벤트 전달 방법 (event.OutboxSender) — kafka(기본) / direct(Kafka 없이 같은 프로세스에서 알림 처리, prod-free 프로필)
 outbox:
+  delivery: kafka
   topic: delivery-events
   publisher:
     enabled: true
