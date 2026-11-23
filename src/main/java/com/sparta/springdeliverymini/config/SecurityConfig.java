@@ -81,6 +81,9 @@ public class SecurityConfig {
                         // 꺼진 공급자의 시작 요청은 필터를 그냥 지나가 404가 되도록 허용. 버튼 표시용 공급자 목록도 토큰 없이
                         .requestMatchers("/oauth2/authorization/**", "/login/oauth2/code/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/users/social/providers").permitAll()
+                        // 배포 데모 체험 (DemoLoginService) — 데모가 꺼져 있으면 빈 목록·404라 운영에서는 열려도 쓸 수 없음
+                        .requestMatchers(HttpMethod.GET, "/api/users/demo-accounts").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/users/demo-login/admin").permitAll()
 
                         // 헬스체크·Prometheus 수집은 토큰 없이 허용 (모니터링 도구가 JWT를 발급받을 수 없으므로)
                         // 실제 노출 여부는 management.endpoints.web.exposure가 결정: 기본(application.yml)은 health만 노출,

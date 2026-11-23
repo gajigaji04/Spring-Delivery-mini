@@ -33,7 +33,7 @@ npm run build             # tsc 타입 검사 + 프로덕션 빌드
 - 상태 칩: 수락 대기(`PAYMENT_COMPLETED`)·배달 중(`ORDER_ACCEPTED`)·배달 완료·취소·결제 대기(`ORDER_REQUEST`, 사장님은 처리 불가) / 정산 예정(`PENDING`)·입금 대기(`CONFIRMED`)·지급 완료(`PAID`)
 - 로그인 후 역할별 첫 화면: 고객 `/stores`, 사장님 `/owner`, 관리자 `/admin/settlements` (막혔던 화면이 있으면 그리로)
 - 고객·관리자 화면은 별도 디자인이 없어 구조는 그대로 두고 공통 클래스(`btn`·`card`·`badge`·표)를 디자인 시스템 모양으로 바꿈
-- 디자인과 다른 점(백엔드 기준): **지급 실패** 상태 없음(정산 상태는 3개) → 정산 예정 카드는 확정 전·입금 대기 2칸. 지급일 "D+2" 대신 실제 `paidAt`. 수수료율은 매장 요율 API가 없어 기간 합계(수수료 ÷ 매출)로 표시. 환불 차감·이월이 있으면 계산 블록 아래·전표에 별도 표시. 테스트 계정 버튼은 `VITE_DEMO_ACCOUNTS`가 있을 때만(계정을 소스에 넣지 않음). 서비스명은 `Delivery mini`
+- 디자인과 다른 점(백엔드 기준): **지급 실패** 상태 없음(정산 상태는 3개) → 정산 예정 카드는 확정 전·입금 대기 2칸. 지급일 "D+2" 대신 실제 `paidAt`. 수수료율은 매장 요율 API가 없어 기간 합계(수수료 ÷ 매출)로 표시. 환불 차감·이월이 있으면 계산 블록 아래·전표에 별도 표시. 로그인 화면 "시연 계정으로 체험하기"(고객·사장님·관리자)는 서버 `GET /api/users/demo-accounts`가 계정을 줄 때만(데모 배포) — 고객·사장님은 아이디·공개 비밀번호를 채우고, 관리자는 `POST /api/users/demo-login/admin`으로 바로 로그인(관리자 비밀번호를 빌드에 넣지 않음). 데모 관리자는 이벤트(Outbox) 탭을 숨김. 서비스명은 `Delivery mini`
 - 사장님 홈 계산: 오늘 매출 = 오늘 생성된 주문 중 결제 완료·배달 중·배달 완료 합계(결제 전·취소 제외), 14일 매출도 같은 기준(주문 생성일). 정산 예정액 = 최근 14일 `PENDING` 정산액 합
 
 ### 랜딩 (`/`, #77 브랜치에서 추가)
@@ -107,7 +107,7 @@ npm run build             # tsc 타입 검사 + 프로덕션 빌드
 - 로그인 화면 "비밀번호를 잊으셨나요?" → `pages/PasswordResetPage`(`/password-reset`): 이메일 입력 → 가입 여부와 관계없이 같은 안내(서버도 항상 202)
 - 메일 링크 `/password-reset#token=...` → 같은 화면이 새 비밀번호 단계로. 토큰은 `auth/passwordResetToken.readResetToken`으로 읽고 **바로 주소창에서 지움**(`history.replaceState`) — 조각(`#`)이라 서버 로그에도 남지 않음. 성공하면 모든 기기 로그아웃 → 로그인 화면
 - 가입 화면 이메일(선택), 내 정보 `EmailSection`·`PasswordSection`: 비밀번호가 있으면 현재 비밀번호 입력, 소셜 전용 회원(`hasPassword: false`)은 "비밀번호 설정". 비밀번호 변경은 **`credentials: 'include'`**로 Refresh 쿠키를 보내 지금 기기 로그인만 남김
-- 공개 데모 계정(`me.demoAccount`)은 두 폼을 숨김 (서버도 403 `DEMO_ACCOUNT_PROTECTED`)
+- 데모 계정(`me.demoAccount`, 관리자 포함)은 두 폼을 숨김 (서버도 403 `DEMO_ACCOUNT_PROTECTED`)
 
 ## 이메일 인증 (V24)
 - 가입·내 정보 `EmailSection`의 이메일은 바로 바뀌지 않고 인증 메일 발송 → 내 정보에 `pendingEmail`('인증 대기'), 미인증 주소(`emailVerified: false`)는 '미인증' 표시

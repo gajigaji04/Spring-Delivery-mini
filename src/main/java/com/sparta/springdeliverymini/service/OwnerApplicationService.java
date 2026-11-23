@@ -43,6 +43,7 @@ public class OwnerApplicationService {
     private final UserRepository userRepository;
     private final OrderRepository orderRepository;
     private final Clock clock;
+    private final DemoAdminScope demoAdminScope; // 데모 관리자는 데모 회원의 신청만
 
     @Transactional
     public OwnerApplicationResponse apply(String username, String businessName) {
@@ -76,15 +77,19 @@ public class OwnerApplicationService {
 
     public Slice<OwnerApplicationResponse> getApplications(OwnerApplicationStatus status, PageQuery pageQuery,
                                                            String adminUsername) {
-        validateAdmin(adminUsername);
-        return ownerApplicationRepository.findAllByStatus(status, pageQuery.toPageable())
-                .map(OwnerApplicationResponse::from);
+        User admin = validateAdmin(adminUsername);
+        Slice<OwnerApplication> applications = demoAdminScope.isDemoAdmin(admin)
+                ? ownerApplicationRepository.findAllByStatusAndUserUsernameIn(
+                        status, demoAdminScope.demoUsernames(), pageQuery.toPageable())
+                : ownerApplicationRepository.findAllByStatus(status, pageQuery.toPageable());
+        return applications.map(OwnerApplicationResponse::from);
     }
 
     @Transactional
     public OwnerApplicationResponse approve(Long applicationId, String adminUsername) {
         User admin = validateAdmin(adminUsername);
         OwnerApplication application = findForUpdate(applicationId);
+        demoAdminScope.requireUser(admin, application.getUser());
         // 신청 뒤 새로 주문했을 수 있으므로 승인 시점에 다시 확인
         // (상태 검사보다 뒤에 두면 이미 처리된 신청에 주문 오류가 나오므로 대기 중일 때만)
         if (application.getStatus() == OwnerApplicationStatus.REQUESTED) {
@@ -100,6 +105,7 @@ public class OwnerApplicationService {
     public OwnerApplicationResponse reject(Long applicationId, String reason, String adminUsername) {
         User admin = validateAdmin(adminUsername);
         OwnerApplication application = findForUpdate(applicationId);
+        demoAdminScope.requireUser(admin, application.getUser());
         application.reject(admin, reason, LocalDateTime.now(clock));
         log.info("사장님 전환 거절 applicationId={}, userId={}, actorId={}",
                 application.getId(), application.getUser().getId(), admin.getId());

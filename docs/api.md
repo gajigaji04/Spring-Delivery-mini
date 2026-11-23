@@ -117,6 +117,8 @@
 | 소셜 로그인 시작 (브라우저 이동) | GET | `/oauth2/authorization/{provider}[?mode=link]` | X | - | 302 |
 | 소셜 로그인 콜백 (공급자 → 서버) | GET | `/login/oauth2/code/{provider}` | X | 시작 기록 쿠키 | 302 |
 | 사용 가능한 소셜 공급자 | GET | `/api/users/social/providers` | X | - | 200 |
+| 체험 계정 목록 (배포 데모) | GET | `/api/users/demo-accounts` | X | - | 200 |
+| 관리자 체험 로그인 (배포 데모) | POST | `/api/users/demo-login/admin` | X | - | 200 |
 | 내 소셜 계정 | GET | `/api/users/me/social-accounts` | O | 로그인 사용자 | 200 |
 | 소셜 계정 연결 시작 | POST | `/api/users/me/social-accounts/{provider}/link` | O | CUSTOMER·OWNER | 204 |
 | 소셜 계정 연결 해제 | DELETE | `/api/users/me/social-accounts/{provider}` | O | 로그인 사용자 | 204 |
@@ -166,6 +168,7 @@
 | 사장님 전환 거절 (관리자) | PATCH | `/api/admin/owner-applications/{id}/reject` | O | ADMIN | 200 |
 | 매장 수수료율 설정 (관리자) | PUT | `/api/admin/stores/{id}/fee-rate` | O | ADMIN | 200 |
 | 매장 수수료율 해제 (관리자) | DELETE | `/api/admin/stores/{id}/fee-rate` | O | ADMIN | 200 |
+| 데모 데이터 초기화 (관리자, 배포 데모) | POST | `/api/admin/demo-data/reset` | O | ADMIN | 200 |
 
 ## 주문 상태 흐름
 
@@ -352,7 +355,7 @@ Response `200 OK` (`MyInfoResponse`, #62)
 |---|---|
 | 400 `INVALID_CURRENT_PASSWORD` | 현재 비밀번호가 틀림 (401이 아님 — 토큰 만료로 보고 재발급하지 않도록) |
 | 400 `PASSWORD_RESET_TOKEN_INVALID` | 재설정 링크가 없거나 만료·이미 사용 |
-| 403 `DEMO_ACCOUNT_PROTECTED` | 공개 데모 계정의 비밀번호·이메일 변경 |
+| 403 `DEMO_ACCOUNT_PROTECTED` | 데모 계정(고객·사장님·관리자)의 비밀번호·이메일 변경 |
 | 400 `EMAIL_VERIFICATION_TOKEN_INVALID` | 인증 링크가 없거나 만료·이미 사용 (V24) |
 | 409 `EMAIL_ALREADY_USED` | 다른 회원이 쓰는 이메일 (등록 요청·인증 시점 모두) |
 | 429 `EMAIL_VERIFICATION_TOO_FREQUENT` | 1분 안에 인증 메일 재요청 (V24) |
@@ -456,6 +459,48 @@ Response `200 OK` — `["google", "kakao"]` (키가 설정된 것만, 이름순.
 | `OAUTH2_FAILED` | state 불일치·코드 교환 실패·공급자 장애·ID 토큰 검증 실패 (원인은 서버 로그) | 다시 시도 |
 
 ---
+
+### 배포 데모 체험 (`demo-data.enabled=true`일 때만)
+
+로그인 화면 "시연 계정으로 체험하기" 버튼용. 데모가 꺼진 배포(운영 기본값)는 목록 `[]`, 체험 로그인 404 `DEMO_LOGIN_UNAVAILABLE`.
+
+#### 체험 계정 목록 `GET /api/users/demo-accounts` (토큰 없음)
+
+```json
+[
+  { "role": "CUSTOMER", "username": "democustomer", "password": "<공개 데모 비밀번호>" },
+  { "role": "OWNER", "username": "demoowner", "password": "<공개 데모 비밀번호>" },
+  { "role": "ADMIN", "username": "demoadmin", "password": null }
+]
+```
+
+- 고객·사장님: 화면이 아이디·비밀번호를 채우고 일반 로그인 `POST /api/users/login`
+- 관리자: 비밀번호를 응답·빌드 결과에 두지 않음 → 아래 체험 로그인
+
+#### 관리자 체험 로그인 `POST /api/users/demo-login/admin` (토큰 없음, 본문 없음)
+
+- 응답은 일반 로그인과 같음 (본문 Access Token + Refresh Token 쿠키)
+- 404 `DEMO_LOGIN_UNAVAILABLE`: 데모가 꺼져 있거나 데모 관리자가 아직 없음(첫 기동 시드 전)
+- **데모 관리자 범위** (`service.DemoAdminScope`) — 누구나 들어오는 관리자라 다른 방문자 데이터는 다루지 않음
+
+| 관리자 API | 데모 관리자 |
+|---|---|
+| 정산 목록·집계 실패 기록 | 데모 매장(데모 사장님 매장) 것만 |
+| 정산 확정·지급·이력, 결제 환불, 매장 수수료율 | 데모 매장만, 그 밖은 403 `DEMO_ADMIN_SCOPE` |
+| 정산 재집계 | 데모 매장을 `storeId`로 지정해야 함 (없으면 403) |
+| 사장님 전환 신청 목록·승인·거절 | 데모 회원(`demoapplicant` 등)의 신청만, 그 밖은 403 |
+| Outbox 이벤트 | 전부 403 (시스템 전체 이벤트) |
+
+일반 관리자, 데모가 꺼진 배포의 같은 아이디는 제한 없음.
+
+#### 데모 데이터 초기화 `POST /api/admin/demo-data/reset` (ADMIN, 데모 관리자 포함)
+
+앞 방문자가 확정·지급·승인·주문한 결과를 지우고 처음 상태로 (`DemoDataSeeder.reset`). 응답 `{ "resetAt": "2026-11-23T21:00:00" }`
+
+- 지움: 데모 사장님 매장에 딸린 정산(이력·환불 차감·이월·집계 실패 포함)·결제·환불·PG 취소 요청·주문·알림·메뉴·매장, 신청자 `demoapplicant`
+- 남김: 데모 관리자·사장님·고객 회원(로그인 세션 유지), 사장님 승인 기록, 다른 방문자의 매장·주문
+- 다시 만듦: 매장 2·메뉴 6·오늘 주문 4, 승인 대기 신청 1, 어제까지 3일치 정산 6(지급·확정·대기)
+- 404 `DEMO_DATA_DISABLED`: 데모가 꺼진 배포 / 429 `DEMO_RESET_TOO_FREQUENT`: 1분 안에 다시 요청 (인스턴스 메모리 기준)
 
 ## 매장
 

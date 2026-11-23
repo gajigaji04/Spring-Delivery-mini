@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Order, OrderStatus, Settlement, SettlementStatus } from '../api/types';
-import { parseDemoAccounts } from '../auth/demoAccounts';
+import { orderDemoAccounts } from '../auth/demoAccounts';
 import {
   addDays,
   agoLabel,
@@ -172,12 +172,17 @@ describe('정산 계산', () => {
   });
 });
 
-describe('테스트 계정 환경 변수', () => {
-  it('역할:아이디:비밀번호 목록을 읽고 형식이 틀린 항목은 버린다', () => {
-    expect(parseDemoAccounts('OWNER:own1:pw1, admin:adm1:pw2,broken')).toEqual([
-      { role: 'OWNER', label: '사장님', username: 'own1', password: 'pw1' },
-      { role: 'ADMIN', label: '관리자', username: 'adm1', password: 'pw2' },
-    ]);
-    expect(parseDemoAccounts(undefined)).toEqual([]);
+describe('체험 계정', () => {
+  it('고객·사장님·관리자 순으로 정렬하고 채울 비밀번호가 없는 계정은 버린다', () => {
+    // 고객 → 사장님 → 관리자 순, 비밀번호 없는 고객·사장님은 버림 (관리자는 비밀번호 없이 체험 로그인)
+    expect(
+      orderDemoAccounts([
+        { role: 'ADMIN', username: 'demoadmin', password: null },
+        { role: 'OWNER', username: 'demoowner', password: 'pw' },
+        { role: 'CUSTOMER', username: 'nopw', password: null },
+        { role: 'CUSTOMER', username: 'democustomer', password: 'pw' },
+      ]).map((a) => a.username),
+    ).toEqual(['democustomer', 'demoowner', 'demoadmin']);
+    expect(orderDemoAccounts([])).toEqual([]);
   });
 });

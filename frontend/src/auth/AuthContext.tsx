@@ -11,6 +11,8 @@ interface AuthContextValue {
   me: MyInfo | null;
   /** 로그인 후 /me(DB 기준) 결과를 돌려줌 — 역할별 첫 화면 이동에 사용 */
   login: (username: string, password: string) => Promise<MyInfo>;
+  /** 관리자 체험하기 — 비밀번호 없이 데모 관리자로 로그인 (데모 배포에서만) */
+  demoAdminLogin: () => Promise<MyInfo>;
   logout: () => Promise<void>;
   reloadMe: () => Promise<unknown>;
 }
@@ -62,6 +64,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [loadMe],
   );
 
+  const demoAdminLogin = useCallback(async () => {
+    const { accessToken } = await authApi.demoAdminLogin();
+    tokenStore.set(accessToken);
+    return loadMe();
+  }, [loadMe]);
+
   const logout = useCallback(async () => {
     try {
       await authApi.logout();
@@ -71,7 +79,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const value = useMemo(() => ({ status, me, login, logout, reloadMe: loadMe }), [status, me, login, logout, loadMe]);
+  const value = useMemo(
+    () => ({ status, me, login, demoAdminLogin, logout, reloadMe: loadMe }),
+    [status, me, login, demoAdminLogin, logout, loadMe],
+  );
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 

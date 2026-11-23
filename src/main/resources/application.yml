@@ -282,8 +282,8 @@ email-verification:
   resend-cooldown: 1m
 
 # 배포 데모 데이터 (config.DemoDataProperties, maintenance.DemoDataSeeder) — 기본 꺼짐
-#   켜면 기동 시 데모 관리자·사장님·고객·매장·메뉴·주문을 한 번만 만듦 (사장님 아이디가 이미 있으면 건너뜀)
-#   password: 공개 데모 계정(사장님·고객) 비밀번호 / admin-password: 비공개 관리자 비밀번호 (비우면 관리자 로그인 불가)
+#   켜면 기동 시 데모 관리자·사장님·고객·매장·메뉴·주문(1단계)과 지난 3일 정산·승인 대기 신청(2단계)을 한 번씩 만듦
+#   password: 공개 데모 계정(사장님·고객) 비밀번호 / admin-password: 비공개 관리자 비밀번호 (선택 — 방문자는 데모 관리자 로그인 API 사용)
 demo-data:
   enabled: ${DEMO_DATA_ENABLED:false}
   password: ${DEMO_PASSWORD:}

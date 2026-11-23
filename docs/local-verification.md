@@ -735,7 +735,8 @@ APP_PORT=8091 NOTIFICATION_SENDER=log docker compose up -d --build app
   - 가입되지 않은 이메일도 202·메일 없음, 1분 안 재요청은 발송 안 함, 1분 뒤 새 링크를 받으면 이전 링크 400, 30분 만료 400
   - 변경: 지금 기기(Refresh 쿠키) 재발급 200·다른 기기 401, 현재 비밀번호 틀리면 400 `INVALID_CURRENT_PASSWORD`, 소셜 전용 회원은 현재 비밀번호 없이 설정 → 아이디 로그인 가능
   - 이메일: 가입·변경 모두 중복 409 `EMAIL_ALREADY_USED`, 등록한 주소로 재설정 링크 수신
-- `DemoDataSeederIntegrationTest`: `demo-data.enabled=true`로 기동 → 회원 3·승인된 전환 신청 1·매장 2·메뉴 6·주문 4(상태별)·모의 결제 3, Outbox 이벤트 0, 다시 실행해도 그대로, 공개 계정 비밀번호 변경 403 `DEMO_ACCOUNT_PROTECTED`
+- `DemoDataSeederIntegrationTest`: `demo-data.enabled=true`로 기동 → 회원 4·전환 신청 2(승인·대기)·매장 2·메뉴 6·주문 13(오늘 4 + 지난 3일 9)·모의 결제 12·정산 6(지급·확정·대기 각 2), Outbox 이벤트 0, 다시 실행해도 그대로, 공개 계정 비밀번호 변경 403 `DEMO_ACCOUNT_PROTECTED` / 체험 계정 목록에 관리자 비밀번호 없음, 관리자 체험 로그인 200 / 데모 관리자는 데모 정산·신청만, Outbox·매장 미지정 재집계 403 / 초기화하면 확정·승인한 상태가 처음으로(정산 지급·확정·대기 2건씩, 신청 대기), 데모 관리자 회원·다른 방문자 매장은 그대로, 1분 안 재요청 429
+- `DemoAdminScopeTest`: 데모 관리자만 데모 매장·회원으로 제한, 일반 관리자·데모 꺼짐은 제한 없음
 - `UserServiceTest`(데모 계정 비밀번호·이메일 403, 비밀번호 있는 회원의 이메일 변경에 현재 비밀번호 필요), `ProdProfileGuardTest`(brevo 필수 값·prod log 금지)
 - 프론트 `auth/passwordResetToken.test.ts`(`#token=` 해석·형식 검사)
 

@@ -112,7 +112,8 @@ export function Layout() {
   }
 
   const role: Role | 'ANONYMOUS' = status === 'authenticated' && me ? me.role : 'ANONYMOUS';
-  const nav = NAV[role];
+  // 데모 관리자는 시스템 전체 이벤트(Outbox)를 볼 수 없음 (서버 403 DEMO_ADMIN_SCOPE) → 탭도 숨김
+  const nav = me?.demoAccount && role === 'ADMIN' ? NAV.ADMIN.filter((n) => n.to !== '/admin/outbox') : NAV[role];
   const hasTabbar = nav.length > 1;
 
   return (

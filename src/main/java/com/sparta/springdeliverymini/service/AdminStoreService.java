@@ -26,12 +26,14 @@ public class AdminStoreService {
     private final StoreRepository storeRepository;
     private final UserRepository userRepository;
     private final PaymentFeeProperties feeProperties; // 공통 수수료율 (응답의 실제 적용 수수료율 계산용)
+    private final DemoAdminScope demoAdminScope; // 데모 관리자는 데모 매장 수수료율만
 
     // 매장 수수료율 설정 — 범위·자릿수 검증은 요청 DTO(400)와 Store.changeFeeRate(최종 보장)
     @Transactional
     public AdminStoreFeeRateResponse changeFeeRate(Long storeId, BigDecimal feeRate, String username) {
-        validateAdmin(username);
+        User admin = validateAdmin(username);
         Store store = findStore(storeId);
+        demoAdminScope.requireStore(admin, store);
         store.changeFeeRate(feeRate);
         return AdminStoreFeeRateResponse.of(store, feeProperties.rate());
     }
@@ -39,8 +41,9 @@ public class AdminStoreService {
     // 매장 수수료율 해제 → 이후 결제는 공통 수수료율 사용 (이미 해제된 매장이어도 그대로 성공)
     @Transactional
     public AdminStoreFeeRateResponse clearFeeRate(Long storeId, String username) {
-        validateAdmin(username);
+        User admin = validateAdmin(username);
         Store store = findStore(storeId);
+        demoAdminScope.requireStore(admin, store);
         store.clearFeeRate();
         return AdminStoreFeeRateResponse.of(store, feeProperties.rate());
     }
@@ -51,12 +54,13 @@ public class AdminStoreService {
     }
 
     // SecurityConfig에서도 ADMIN만 허용하지만, 토큰 발급 후 역할이 바뀐 경우에 대비해 DB 기준으로 한 번 더 확인
-    private void validateAdmin(String username) {
+    private User validateAdmin(String username) {
         // 토큰은 유효하지만 그 사이 회원이 삭제된 경우 → 401
         User currentUser = userRepository.findByUsername(username)
                 .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "존재하지 않는 회원입니다."));
         if (currentUser.getRole() != Role.ADMIN) {
             throw new ApiException(HttpStatus.FORBIDDEN, "관리자만 수수료율을 변경할 수 있습니다.");
         }
+        return currentUser;
     }
 }

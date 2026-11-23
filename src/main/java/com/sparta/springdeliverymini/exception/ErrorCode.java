@@ -75,6 +75,10 @@ public enum ErrorCode {
     PASSWORD_RESET_TOKEN_INVALID,  // 400 재설정 링크가 없거나 만료·이미 사용 → 비밀번호 찾기부터 다시
     EMAIL_ALREADY_USED,            // 409 다른 회원이 쓰는 이메일
     DEMO_ACCOUNT_PROTECTED,        // 403 공개 데모 계정은 비밀번호·이메일을 바꿀 수 없음 (방문자 모두가 쓰는 계정)
+    DEMO_ADMIN_SCOPE,              // 403 데모 관리자는 데모 회원·매장 데이터만 처리 (service.DemoAdminScope)
+    DEMO_LOGIN_UNAVAILABLE,        // 404 데모 데이터가 꺼져 있거나 데모 관리자가 없어 체험 로그인을 쓸 수 없음
+    DEMO_DATA_DISABLED,            // 404 데모 데이터가 꺼진 배포라 초기화할 데모 데이터가 없음
+    DEMO_RESET_TOO_FREQUENT,       // 429 데모 데이터 초기화 간격(1분) 안에 다시 요청
     PASSWORD_RESET_UNAVAILABLE,    // 503 메일 발송이 설정되지 않아 비밀번호 찾기를 쓸 수 없음 (mail.sender=none)
 
     // 이메일 인증 (V24) — docs/api.md 비밀번호·이메일 장

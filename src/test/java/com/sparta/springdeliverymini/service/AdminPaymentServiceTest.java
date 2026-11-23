@@ -59,7 +59,7 @@ class AdminPaymentServiceTest {
     void setUp() {
         Clock clock = Clock.fixed(NOW.atZone(TimeConfig.ZONE).toInstant(), TimeConfig.ZONE);
         service = new AdminPaymentService(paymentRepository, userRepository, clock, outboxEventRecorder, pgCancelService,
-                paymentRefundRepository);
+                paymentRefundRepository, DemoAdminScopes.disabled());
         lenient().when(paymentRefundRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
     }
 

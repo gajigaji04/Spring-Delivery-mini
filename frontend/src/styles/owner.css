@@ -918,6 +918,11 @@
   border-color: var(--ink);
 }
 
+.acc:disabled {
+  opacity: 0.55;
+  cursor: progress;
+}
+
 .acc b {
   font-size: var(--fs-xs);
   font-weight: 800;

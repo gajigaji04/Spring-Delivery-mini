@@ -1,4 +1,5 @@
 import type { AddressInput } from '../address/validateAddress';
+import type { DemoAccount } from '../auth/demoAccounts';
 import { ApiError, get, getPage, request } from './client';
 import type {
   AdminSettlement,
@@ -36,6 +37,16 @@ export const authApi = {
       await request<TokenResponse>('/api/users/login', {
         method: 'POST',
         body: { username, password },
+        auth: false,
+        withCredentials: true,
+      })
+    ).data,
+  // 배포 데모 체험 — 데모가 꺼진 배포는 빈 배열. 관리자는 비밀번호 없이 체험 로그인 (응답은 일반 로그인과 같음)
+  demoAccounts: () => get<DemoAccount[]>('/api/users/demo-accounts', undefined, false),
+  demoAdminLogin: async () =>
+    (
+      await request<TokenResponse>('/api/users/demo-login/admin', {
+        method: 'POST',
         auth: false,
         withCredentials: true,
       })
@@ -177,6 +188,9 @@ export const ownerApplicationApi = {
 };
 
 export const adminApi = {
+  // 배포 데모 데이터 초기화 — 데모 매장 정산·주문·승인 대기 신청을 처음 상태로 (데모가 꺼진 배포는 404, 1분 간격 429)
+  resetDemoData: async () =>
+    (await request<{ resetAt: string }>('/api/admin/demo-data/reset', { method: 'POST' })).data,
   ownerApplications: (status: OwnerApplicationStatus, page: number, size = 20) =>
     getPage<OwnerApplication>('/api/admin/owner-applications', { status, page, size }),
   approveOwner: async (id: number) =>
