@@ -1,14 +1,15 @@
 import { useState, type FormEvent } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { refreshAccessToken } from '../api/client';
-import { ownerApplicationApi } from '../api/endpoints';
+import { authApi, ownerApplicationApi } from '../api/endpoints';
 import { socialApi, socialLabel } from '../api/social';
 import { SocialLogo } from '../components/SocialLogo';
-import type { OwnerApplication } from '../api/types';
+import type { MyInfo, OwnerApplication } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
 import { DelayedSpinner } from '../components/DelayedSpinner';
 import { ErrorMessage } from '../components/ErrorMessage';
 import { formatDateTime, StatusBadge } from '../components/format';
+import { useToast } from '../components/Toast';
 import { useAsync } from '../hooks/useAsync';
 
 const roleLabel = { CUSTOMER: '고객', OWNER: '사장님', ADMIN: '관리자' } as const;
@@ -28,6 +29,22 @@ export default function MePage() {
         <dd>{roleLabel[me.role]}</dd>
         <dt className="muted">가입</dt>
         <dd>{formatDateTime(me.createdAt)}</dd>
+        <dt className="muted">이메일</dt>
+        <dd>
+          {me.email ? (
+            <>
+              {me.email}{' '}
+              {!me.emailVerified && <span className="muted">(미인증 — 인증해야 비밀번호 찾기에 쓸 수 있어요)</span>}
+            </>
+          ) : (
+            <span className="muted">등록 안 됨 — 비밀번호 찾기를 쓰려면 등록하고 인증해 주세요</span>
+          )}
+          {me.pendingEmail && (
+            <div className="muted" role="status">
+              인증 대기: {me.pendingEmail} — 메일함의 인증 링크를 열면 등록돼요
+            </div>
+          )}
+        </dd>
         {me.role === 'OWNER' && (
           <>
             <dt className="muted">매장 id</dt>
@@ -36,10 +53,175 @@ export default function MePage() {
         )}
       </dl>
       {notice && <p className="muted" role="status">{notice}</p>}
+      {me.demoAccount ? (
+        <p className="muted">공개 데모 계정이라 비밀번호·이메일은 바꿀 수 없어요.</p>
+      ) : (
+        <>
+          <EmailSection me={me} />
+          <PasswordSection me={me} />
+        </>
+      )}
       {/* 관리자는 소셜 연결 불가 (서버도 403) — 관리자 권한이 소셜 계정 보안에 의존하지 않도록 */}
       {me.role !== 'ADMIN' && <SocialAccountsSection />}
       {me.role === 'CUSTOMER' && <OwnerApplicationSection />}
     </section>
+  );
+}
+
+/**
+ * 이메일 등록·변경 (V23) — 비밀번호가 있는 회원은 현재 비밀번호 확인 (토큰만 훔친 사람이 주소를 바꿔 계정을 가져가지 못하도록)
+ * V24: 바로 바뀌지 않고 입력한 주소로 인증 메일 → 링크를 열어야 확정. 미인증 주소는 같은 주소를 다시 입력해 인증 메일을 받음
+ */
+function EmailSection({ me }: { me: MyInfo }) {
+  const { reloadMe } = useAuth();
+  const { notify } = useToast();
+  const [email, setEmail] = useState('');
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [error, setError] = useState<unknown>(null);
+  const [busy, setBusy] = useState(false);
+
+  const onSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      await authApi.changeEmail(email.trim(), me.hasPassword ? currentPassword : undefined);
+      await reloadMe();
+      setEmail('');
+      setCurrentPassword('');
+      notify('인증 메일을 보냈어요. 메일함의 링크를 열면 등록돼요');
+    } catch (err) {
+      setError(err);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <h2>{me.email ? '이메일 변경' : '이메일 등록'}</h2>
+      <p className="muted">입력한 주소로 인증 메일을 보내요. 링크를 열기 전까지는 지금 이메일이 그대로 쓰여요.</p>
+      <form className="form" onSubmit={onSubmit}>
+        <label>
+          새 이메일
+          <input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            maxLength={255}
+            autoComplete="email"
+            required
+          />
+        </label>
+        {me.hasPassword && (
+          <label>
+            현재 비밀번호
+            <input
+              type="password"
+              value={currentPassword}
+              onChange={(e) => setCurrentPassword(e.target.value)}
+              autoComplete="current-password"
+              required
+            />
+          </label>
+        )}
+        <ErrorMessage error={error} />
+        <button className="btn" disabled={busy}>
+          인증 메일 보내기
+        </button>
+      </form>
+    </>
+  );
+}
+
+/** 비밀번호 변경 (V23) — 소셜 전용 회원은 현재 비밀번호 없이 첫 설정. 성공하면 다른 기기의 로그인은 서버가 끊음 */
+function PasswordSection({ me }: { me: MyInfo }) {
+  const { reloadMe } = useAuth();
+  const { notify } = useToast();
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [error, setError] = useState<unknown>(null);
+  const [busy, setBusy] = useState(false);
+  const mismatch = confirm.length > 0 && newPassword !== confirm;
+
+  const onSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (mismatch) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await authApi.changePassword(newPassword, me.hasPassword ? currentPassword : undefined);
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirm('');
+      // 소셜 전용 → 비밀번호 있음으로 바뀜 (다음 변경부터 현재 비밀번호 필요)
+      if (!me.hasPassword) await reloadMe();
+      notify(
+        me.hasPassword
+          ? '비밀번호를 바꿨어요. 다른 기기는 로그아웃됐어요'
+          : '비밀번호를 설정했어요. 이제 아이디로도 로그인할 수 있어요',
+      );
+    } catch (err) {
+      setError(err);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <h2>{me.hasPassword ? '비밀번호 변경' : '비밀번호 설정'}</h2>
+      {!me.hasPassword && (
+        <p className="muted">소셜 로그인으로 가입한 계정이에요. 비밀번호를 설정하면 아이디로도 로그인할 수 있어요.</p>
+      )}
+      <form className="form" onSubmit={onSubmit}>
+        {me.hasPassword && (
+          <label>
+            현재 비밀번호
+            <input
+              type="password"
+              value={currentPassword}
+              onChange={(e) => setCurrentPassword(e.target.value)}
+              autoComplete="current-password"
+              required
+            />
+          </label>
+        )}
+        <label>
+          새 비밀번호 (8~72자)
+          <input
+            type="password"
+            value={newPassword}
+            onChange={(e) => setNewPassword(e.target.value)}
+            minLength={8}
+            maxLength={72}
+            autoComplete="new-password"
+            required
+          />
+        </label>
+        <label>
+          새 비밀번호 확인
+          <input
+            type="password"
+            value={confirm}
+            onChange={(e) => setConfirm(e.target.value)}
+            aria-invalid={mismatch}
+            autoComplete="new-password"
+            required
+          />
+        </label>
+        {mismatch && (
+          <p className="muted" role="alert">
+            비밀번호가 서로 달라요.
+          </p>
+        )}
+        <ErrorMessage error={error} />
+        <button className="btn" disabled={busy || mismatch}>
+          {me.hasPassword ? '변경' : '설정'}
+        </button>
+      </form>
+    </>
   );
 }
 

@@ -12,6 +12,7 @@ export default function SignupPage() {
   const { notify } = useToast();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [email, setEmail] = useState('');
   const [error, setError] = useState<unknown>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -20,8 +21,9 @@ export default function SignupPage() {
     setSubmitting(true);
     setError(null);
     try {
-      await authApi.signup(username, password);
-      notify('가입했어요. 로그인해 주세요');
+      await authApi.signup(username, password, email.trim() || undefined);
+      // 이메일은 인증 메일의 링크를 열어야 등록됨 (V24)
+      notify(email.trim() ? '가입했어요. 메일함의 인증 링크를 열어 이메일을 인증해 주세요' : '가입했어요. 로그인해 주세요');
       navigate('/login');
     } catch (err) {
       setError(err);
@@ -69,6 +71,20 @@ export default function SignupPage() {
             maxLength={72}
             autoComplete="new-password"
             required
+          />
+        </div>
+        <div className="fld">
+          {/* 선택 (V23) — 비밀번호 찾기 메일을 받을 주소. 나중에 내 정보에서 등록해도 됨 */}
+          <label htmlFor="signup-email">이메일 (선택, 비밀번호 찾기용)</label>
+          <input
+            id="signup-email"
+            className="inp"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            maxLength={255}
+            autoComplete="email"
+            placeholder="you@example.com"
           />
         </div>
         <ErrorMessage error={error} />

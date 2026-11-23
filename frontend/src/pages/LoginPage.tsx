@@ -84,6 +84,11 @@ export default function LoginPage() {
         <button type="submit" className="btn btn--lg btn--block" style={{ marginTop: 4 }} disabled={submitting}>
           {submitting ? '확인 중…' : '로그인'}
         </button>
+        <p style={{ textAlign: 'right', margin: 0 }}>
+          <PrefetchLink to="/password-reset" page="passwordReset" className="link">
+            비밀번호를 잊으셨나요?
+          </PrefetchLink>
+        </p>
       </form>
       <SocialLoginButtons />
       {demoAccounts.length > 0 && (

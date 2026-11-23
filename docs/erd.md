@@ -32,12 +32,32 @@ erDiagram
     users ||--o{ owner_applications : "user_id (신청자)"
     users ||--o{ owner_applications : "decided_by (처리 관리자)"
     users ||--o{ social_accounts : "user_id (V22, 공급자별 1개)"
+    users ||--o{ password_reset_tokens : "user_id (V23)"
+    users ||--o{ email_verification_tokens : "user_id (V24)"
 
     users {
         bigint id PK
         varchar username UK
         varchar password "NULL = 소셜 전용 (V22)"
         varchar role "CUSTOMER/OWNER/ADMIN"
+        varchar email UK "NULL 허용, 소문자 (V23)"
+        timestamp email_verified_at "NULL이면 미인증 (V24)"
+    }
+    password_reset_tokens {
+        bigint id PK
+        bigint user_id FK
+        varchar token_hash UK "SHA-256"
+        timestamp expires_at "발급 + 30분"
+        timestamp used_at "NULL = 사용 가능"
+    }
+    email_verification_tokens {
+        bigint id PK
+        bigint user_id FK
+        varchar email "인증할 주소, 소문자"
+        varchar token_hash UK "SHA-256"
+        timestamp created_at
+        timestamp expires_at "발급 + 24시간"
+        timestamp used_at "NULL이면 사용 가능"
     }
     social_accounts {
         bigint id PK

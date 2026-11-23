@@ -68,5 +68,17 @@ public enum ErrorCode {
     OAUTH2_CANCELLED,              // 사용자가 동의 화면에서 취소 (error=access_denied)
     OAUTH2_REQUEST_EXPIRED,        // 로그인 시작 기록(쿠키)이 없거나 만료·다른 탭에서 덮어씀 → 처음부터 다시
     SOCIAL_LINK_EXPIRED,           // 연결 요청(쿠키)이 만료·변조·다른 공급자 → 연결 버튼부터 다시
-    OAUTH2_FAILED                  // 그 밖의 실패(공급자 오류·토큰 교환 실패 등) → 다시 시도
+    OAUTH2_FAILED,                 // 그 밖의 실패(공급자 오류·토큰 교환 실패 등) → 다시 시도
+
+    // 비밀번호·이메일 (V23) — docs/api.md 비밀번호 장
+    INVALID_CURRENT_PASSWORD,      // 400 현재 비밀번호가 틀림 (401이 아님 — 프론트가 토큰 만료로 보고 재발급하지 않도록)
+    PASSWORD_RESET_TOKEN_INVALID,  // 400 재설정 링크가 없거나 만료·이미 사용 → 비밀번호 찾기부터 다시
+    EMAIL_ALREADY_USED,            // 409 다른 회원이 쓰는 이메일
+    DEMO_ACCOUNT_PROTECTED,        // 403 공개 데모 계정은 비밀번호·이메일을 바꿀 수 없음 (방문자 모두가 쓰는 계정)
+    PASSWORD_RESET_UNAVAILABLE,    // 503 메일 발송이 설정되지 않아 비밀번호 찾기를 쓸 수 없음 (mail.sender=none)
+
+    // 이메일 인증 (V24) — docs/api.md 비밀번호·이메일 장
+    EMAIL_VERIFICATION_TOKEN_INVALID,  // 400 인증 링크가 없거나 만료·이미 사용 → 내 정보에서 인증 메일 다시 요청
+    EMAIL_VERIFICATION_TOO_FREQUENT,   // 429 재요청 간격(resend-cooldown) 안에 인증 메일을 다시 요청
+    EMAIL_VERIFICATION_UNAVAILABLE     // 503 메일 발송이 설정되지 않아 이메일을 등록·변경할 수 없음 (mail.sender=none)
 }

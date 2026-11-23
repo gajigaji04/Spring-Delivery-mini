@@ -12,7 +12,8 @@ import org.springframework.data.repository.query.Param;
 import java.util.List;
 import java.util.Optional;
 
-public interface StoreRepository extends JpaRepository<Store, Long> {
+public interface
+StoreRepository extends JpaRepository<Store, Long> {
 
     // 매장 목록을 페이지 단위로 조회 (#40)
     // JpaRepository.findAll(Pageable)은 Page를 반환하며 전체 개수(count)를 함께 조회하므로, 개수를 세지 않는 Slice로 따로 정의

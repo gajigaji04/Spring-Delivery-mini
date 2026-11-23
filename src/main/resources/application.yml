@@ -254,6 +254,41 @@ social:
       client-id: ${GOOGLE_CLIENT_ID:}
       client-secret: ${GOOGLE_CLIENT_SECRET:}
 
+# 메일 발송 (V23 비밀번호 찾기, config.MailProperties) — sender: none(발송 안 함 → 비밀번호 찾기 503) | log(본문을 로그로) | brevo
+#   brevo: HTTPS API (Render Free는 SMTP 포트를 막음). 발신 주소는 Brevo 콘솔에서 인증한 주소. prod 기본은 none (application-prod.yml)
+mail:
+  sender: ${MAIL_SENDER:log}
+  from-address: ${MAIL_FROM_ADDRESS:}
+  from-name: ${MAIL_FROM_NAME:Spring Delivery}
+  brevo:
+    api-key: ${BREVO_API_KEY:}
+    api-url: https://api.brevo.com/v3/smtp/email
+    connect-timeout: 3s
+    read-timeout: 5s
+
+# 비밀번호 재설정 링크 (V23, config.PasswordResetProperties) — 링크 = url + #token=...
+#   url: 프론트의 재설정 화면 (Vercel 배포는 https://{프론트 도메인}/password-reset)
+password-reset:
+  url: ${PASSWORD_RESET_URL:http://localhost:5173/password-reset}
+  ttl: 30m
+  resend-cooldown: 1m
+
+# 이메일 인증 링크 (V24, config.EmailVerificationProperties) — 링크 = url + #token=...
+#   url: 프론트의 인증 화면 (Vercel 배포는 https://{프론트 도메인}/email-verification)
+#   resend-cooldown: 내 정보에서 인증 메일을 다시 요청할 수 있는 최소 간격 (그 안이면 429)
+email-verification:
+  url: ${EMAIL_VERIFICATION_URL:http://localhost:5173/email-verification}
+  ttl: 24h
+  resend-cooldown: 1m
+
+# 배포 데모 데이터 (config.DemoDataProperties, maintenance.DemoDataSeeder) — 기본 꺼짐
+#   켜면 기동 시 데모 관리자·사장님·고객·매장·메뉴·주문을 한 번만 만듦 (사장님 아이디가 이미 있으면 건너뜀)
+#   password: 공개 데모 계정(사장님·고객) 비밀번호 / admin-password: 비공개 관리자 비밀번호 (비우면 관리자 로그인 불가)
+demo-data:
+  enabled: ${DEMO_DATA_ENABLED:false}
+  password: ${DEMO_PASSWORD:}
+  admin-password: ${DEMO_ADMIN_PASSWORD:}
+
 # 로그 — 모든 로그 줄에 요청별 traceId(logging.TraceIdFilter가 MDC에 넣은 값)를 출력
 # 요청 밖(스케줄러 등)에서는 빈 값. 응답 헤더 X-Trace-Id·에러 응답 traceId와 같은 값으로 로그를 찾을 수 있음
 logging:

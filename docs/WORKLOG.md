@@ -9,6 +9,18 @@ CLAUDE.md에서 옮긴 진행 상황·다음 작업·남은 후속 기록(2026-1
 - 2026-11-23 **배포 방향 전환**: #86 머지(PR #87) 후 Oracle A1 용량 부족이 계속돼 월 $0·카드 없는 무료 구성으로 변경 — Render Free(백엔드) + Neon Free(PG 18) + Upstash Free(Redis) + Vercel, Kafka 제외. 조사·비교·측정은 `docs/operations.md` 9장(8장 Oracle 구성은 A1 확보 시용으로 유지)
   - 구현(미커밋, develop 위): `prod-free` 프로필(`application-prod-free.yml`, `prod,prod-free`로 사용), `event.OutboxSender`(Kafka/Direct) 분리, `ProdProfileGuard` direct 모드 Kafka 주소 면제, Dockerfile 주석(JVM 옵션은 `JAVA_TOOL_OPTIONS`), 프론트 서버 깨우기(`api/serverWake.ts`·`ServerWakeBanner`)
   - 로컬 측정(512MB·0.1 CPU): prod-free 재기동 300초, 메모리 약 320MB. AppCDS는 Render 실측 후 결정(9-4). 다음: 사용자 커밋 → Neon·Upstash·Render·Vercel 생성 → 9-5 확인
+- 2026-11-23 **#90 무료 배포 마무리 + 비밀번호 찾기·변경** (브랜치 `chore/90-deployment-demo-data`, 미커밋)
+  - 배포 화면 확인: Render는 UP이지만 소셜 키 없음(providers `[]`), main의 `vercel.json`이 `API_DOMAIN` 자리표시자, Neon은 빈 DB, 브랜치 미리보기 주소는 Vercel Authentication
+  - 저장소: `vercel.json` Render 주소, `.env.example`(메일·데모 변수), V23(`users.email`, `password_reset_tokens`, `PASSWORD_CHANGED`),
+    `PasswordResetService`·`UserService.changePassword/changeEmail`, `mail` 패키지(none·log·brevo), `DemoDataSeeder`(`demo-data.*`), `ProdProfileGuard` 메일 검사,
+    프론트 `/password-reset`·로그인 "비밀번호를 잊으셨나요?"·가입 이메일·내 정보 이메일/비밀번호 폼. 문서 `docs/operations.md` 9-2·9-6·9-7, api·architecture·database·erd
+  - 사용자 할 일: 커밋·main 반영 → Render 환경변수(소셜·`MAIL_*`·`BREVO_API_KEY`·`PASSWORD_RESET_URL`·`DEMO_*`) → Brevo 발신 주소 인증 → Vercel `VITE_DEMO_ACCOUNTS`·프로덕션 도메인 → 카카오·구글 Redirect URI → 9-5 확인
+- 2026-11-23 **이메일 소유권 인증** (같은 브랜치, 미커밋) — V24(`users.email_verified_at`, `email_verification_tokens`)
+  - `EmailVerificationService`: 가입·내 정보의 이메일은 인증 링크(`/email-verification#token=`, 24시간·1회·해시 저장)를 열어야 `users.email`로 확정, 대기 주소는 선점 불가
+  - 비밀번호 찾기는 인증된 주소만(미인증도 같은 202). V23 기존 주소는 미인증 → 같은 주소 재입력으로 인증. 1분 재요청 간격 429, 발송 꺼짐 503
+  - `POST /api/users/email-verification/confirm`(permitAll), `MyInfoResponse.emailVerified·pendingEmail`, 프론트 `EmailVerificationPage`(버튼으로 인증)
+  - **Render 추가 환경변수: `EMAIL_VERIFICATION_URL=https://{프론트}/email-verification`** (`MAIL_SENDER=brevo`면 prod 점검 필수)
+  - 테스트: 백엔드 113클래스 985건, 프론트 81건·빌드 통과
 
 ## 진행 상황 (#78 머지 완료(PR #82) / 소셜 로그인 + 포트폴리오 보강 커밋 완료(`60e0136`)·푸시·PR 전 — 브랜치 `feat/79-social-login`, 2026-11-22)
 - 완료: 매장·메뉴·주문, 결제(수수료), 일 정산 집계·확정·지급, 취소·환불·이월(#30), 매장별 수수료율(#32),
@@ -139,7 +151,7 @@ CLAUDE.md에서 옮긴 진행 상황·다음 작업·남은 후속 기록(2026-1
   - 로컬: 프론트 5173(CORS 기본 허용) → API `http://localhost:8090`
 - **다음 세션 시작점 (2026-11-22 갱신)**: #76·#77·#78 머지 완료(PR #80·#81·#82). 브랜치 `feat/79-social-login`에 소셜 로그인(V22) + 포트폴리오 보강(README·실측·스크린샷·프론트 소셜 버튼·주문 상세 표시 수정)을 **사용자가 커밋 완료(`60e0136`, develop보다 1커밋 앞, 원격 브랜치 없음)**. 마무리 확인(2026-11-22): 백엔드 108클래스 946건·프론트 70건·빌드 통과, `.env`류 커밋 제외 확인. PR 본문은 작성해 전달함(파일은 사용자 요청으로 삭제 — 필요하면 다시 작성, #82와 같은 구성, `Closes #79`).
   **대기 중**: 사용자의 푸시·develop PR(develop 대상 PR은 CI가 안 돎 — 트리거가 main뿐), 마무리로 develop → main PR 권장(`origin/main`은 #58에 멈춰 있음, 그때 CI 전체 실행), 실제 소셜 로그인 남은 시나리오(9-3 — 구글·카카오 연결은 통과), 사장님 실시간 알림 GIF(`docs/images/owner-realtime.gif` → README "화면" 맨 위), `customer-order-detail.png` 재촬영(수정 전 '배달완료 -' 문구가 찍혀 있음), Vercel 배포(별도 작업, `docs/roadmap.md` 마지막 장), `.env`의 `APP_PORT`를 8091로 바꿀지(지금 8080 → 그대로 `docker compose up`하면 포트 충돌로 앱이 Created에 멈춤).
-  소셜 로그인 후속 후보: 소셜 전용 회원 비밀번호 설정, 회원 합치기(필요 시). 새 작업은 사용자 지시 대기.
+  소셜 로그인 후속 후보: ~~소셜 전용 회원 비밀번호 설정~~(V23), 회원 합치기(필요 시). 새 작업은 사용자 지시 대기.
   #78 이전 기록: 수동 확인(8-2 실제 토스 결제창, 8-3 가짜 결제창 브라우저)은 아직.
   남은 #78 후속: 관리자 부분 환불 화면(지금은 API만), 토스 대사(미기록 승인 찾기), 고객 화면 환불 진행 상태 표시.
   로컬: compose 앱 `APP_PORT=8091`(V22 이미지, `TOSS_MODE=fake`·`NOTIFICATION_SENDER=log` — 셸에서 `$env:APP_PORT='8091'; $env:TOSS_MODE='fake'; $env:NOTIFICATION_SENDER='log'` 후 `docker compose --profile monitoring up -d app`), 로컬 DB V22, 프론트 `frontend/.env` → 8091(테스트 계정 버튼 3개), Grafana http://localhost:3000/d/delivery-app/delivery-app. 소셜 키는 `.env`에 설정됨(콘솔 Redirect URI는 8091).

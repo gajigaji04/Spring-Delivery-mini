@@ -24,6 +24,16 @@ export interface MyInfo {
   role: Role;
   createdAt: string;
   storeIds: number[];
+  /** 비밀번호 찾기 메일 주소 (V23), 없으면 null */
+  email: string | null;
+  /** false면 소셜 전용 회원 — 현재 비밀번호 없이 비밀번호를 설정 */
+  hasPassword: boolean;
+  /** 공개 데모 계정 — 비밀번호·이메일 변경 불가 */
+  demoAccount: boolean;
+  /** email이 인증된 주소인지 (V24) — false면 비밀번호 찾기에 쓸 수 없음 */
+  emailVerified: boolean;
+  /** 인증 메일을 보내고 링크를 기다리는 주소 (V24), 없으면 null — 인증 전까지 email은 그대로 */
+  pendingEmail: string | null;
 }
 
 export interface Store {
