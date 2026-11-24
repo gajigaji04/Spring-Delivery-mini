@@ -21,6 +21,8 @@ import org.springframework.context.annotation.Import;
 import org.springframework.data.domain.Slice;
 import org.springframework.http.HttpStatus;
 
+import org.springframework.jdbc.core.JdbcTemplate;
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -51,6 +53,7 @@ class StoreOrderIntegrationTest {
     private static final PageQuery PAGE = PageQuery.of(0, PageQuery.DEFAULT_SIZE);
 
     @Autowired private EntityManagerFactory entityManagerFactory;
+    @Autowired private JdbcTemplate jdbcTemplate;
 
     @BeforeEach
     void setUp() {
@@ -132,7 +135,7 @@ class StoreOrderIntegrationTest {
     // ===== 목록 페이징 (#40) =====
 
     @Test
-    void 주문_목록은_id_오름차순으로_페이지_단위로_조회되고_페이지끼리_겹치지_않는다() {
+    void 주문_목록은_최신_주문부터_페이지_단위로_조회되고_페이지끼리_겹치지_않는다() {
         List<Long> created = List.of(
                 order(chickenStore, "후라이드 치킨", "owner1").id(),
                 order(pizzaStore, "치즈 피자", "owner1").id(),
@@ -144,9 +147,9 @@ class StoreOrderIntegrationTest {
         Slice<OrderResponse> second = orderService.getOrders("customer1", PageQuery.of(1, 2));
         Slice<OrderResponse> last = orderService.getOrders("customer1", PageQuery.of(2, 2));
 
-        assertThat(first).extracting(OrderResponse::id).containsExactly(created.get(0), created.get(1));
-        assertThat(second).extracting(OrderResponse::id).containsExactly(created.get(2), created.get(3));
-        assertThat(last).extracting(OrderResponse::id).containsExactly(created.get(4));
+        assertThat(first).extracting(OrderResponse::id).containsExactly(created.get(4), created.get(3));
+        assertThat(second).extracting(OrderResponse::id).containsExactly(created.get(2), created.get(1));
+        assertThat(last).extracting(OrderResponse::id).containsExactly(created.get(0));
         assertThat(first.hasNext()).isTrue();
         assertThat(second.hasNext()).isTrue();
         assertThat(last.hasNext()).isFalse();
@@ -210,7 +213,7 @@ class StoreOrderIntegrationTest {
 
         // 3 + 3 + 1 — 마지막 페이지에서만 hasNext=false (keysetPages가 그때 멈춤)
         assertThat(pages).extracting(List::size).containsExactly(3, 3, 1);
-        assertThat(pages.stream().flatMap(List::stream).toList()).containsExactlyElementsOf(owner1Orders);
+        assertThat(pages.stream().flatMap(List::stream).toList()).containsExactlyElementsOf(owner1Orders.reversed());
         // 같은 크기의 OFFSET 페이지와 순서·내용이 같음
         for (int page = 0; page < pages.size(); page++) {
             assertThat(orderService.getOrders("owner1", PageQuery.of(page, 3)))
@@ -219,17 +222,18 @@ class StoreOrderIntegrationTest {
     }
 
     @Test
-    void keyset_경계_afterId가_0이면_첫_페이지_마지막_id면_빈_결과_다른_점주의_id여도_그_다음부터_조회된다() {
+    void keyset_경계_afterId가_0이면_첫_페이지_목록_마지막_주문이면_빈_결과_다른_점주의_주문이어도_그_위치_다음부터_조회된다() {
         long first = order(chickenStore, "후라이드", "owner1").id();
         long otherOwners = order(otherOwnerStore, "떡볶이", "owner2").id();
         long second = order(pizzaStore, "피자", "owner1").id();
 
+        // 최신 주문이 위
         assertThat(orderService.getOrdersAfter("owner1", KeysetQuery.of(0, 20)))
-                .extracting(OrderResponse::id).containsExactly(first, second);
-        // 본인 주문이 아닌 id(다른 점주 주문·삭제된 주문)도 위치로만 쓰이므로 그 다음 본인 주문부터
+                .extracting(OrderResponse::id).containsExactly(second, first);
+        // 본인 주문이 아닌 주문(다른 점주 주문)도 위치로만 쓰이므로 그보다 이른 본인 주문부터
         assertThat(orderService.getOrdersAfter("owner1", KeysetQuery.of(otherOwners, 20)))
-                .extracting(OrderResponse::id).containsExactly(second);
-        Slice<OrderResponse> afterLast = orderService.getOrdersAfter("owner1", KeysetQuery.of(second, 20));
+                .extracting(OrderResponse::id).containsExactly(first);
+        Slice<OrderResponse> afterLast = orderService.getOrdersAfter("owner1", KeysetQuery.of(first, 20));
         assertThat(afterLast).isEmpty();
         assertThat(afterLast.hasNext()).isFalse();
         // 정확히 size건만 남았을 때 hasNext=false (size + 1건 조회로 판단)
@@ -239,7 +243,7 @@ class StoreOrderIntegrationTest {
     }
 
     @Test
-    void keyset_페이징_중에_새_주문이_들어와도_이미_받은_주문이_다시_나오지_않고_새_주문은_뒤에_이어진다() {
+    void keyset_페이징_중에_새_주문이_들어와도_이미_받은_주문이_다시_나오지_않고_다음_페이지가_밀리지_않는다() {
         List<Long> before = new ArrayList<>();
         for (int i = 0; i < 4; i++) {
             before.add(order(chickenStore, "치킨 " + i, "owner1").id());
@@ -252,9 +256,28 @@ class StoreOrderIntegrationTest {
         Slice<OrderResponse> third = orderService.getOrdersAfter(
                 "owner1", KeysetQuery.of(second.getContent().get(1).id(), 2));
 
-        assertThat(first).extracting(OrderResponse::id).containsExactly(before.get(0), before.get(1));
-        assertThat(second).extracting(OrderResponse::id).containsExactly(before.get(2), before.get(3));
-        assertThat(third).extracting(OrderResponse::id).containsExactly(added);
+        // 최신순이라 새 주문은 목록 맨 위(다음 첫 페이지 조회)에 나오고, 이어 받는 페이지에는 섞이지 않음
+        //   OFFSET이었다면 새 주문만큼 행이 밀려 before.get(1)이 두 번째 페이지에 다시 나옴
+        assertThat(first).extracting(OrderResponse::id).containsExactly(before.get(3), before.get(2));
+        assertThat(second).extracting(OrderResponse::id).containsExactly(before.get(1), before.get(0));
+        assertThat(third).isEmpty();
+        assertThat(orderService.getOrdersAfter("owner1", KeysetQuery.of(0, 1)))
+                .extracting(OrderResponse::id).containsExactly(added);
+    }
+
+    @Test
+    void 주문_시각이_id_순서와_달라도_OFFSET과_keyset_모두_주문_시각_최신순으로_조회된다() {
+        // 데모 시더처럼 지난 주문을 나중에 넣고 시각만 과거로 기록한 경우 — id 순서로 정렬하면 사흘 전 주문이 맨 위에 옴
+        long older = order(chickenStore, "후라이드 치킨", "owner1").id();
+        long newer = order(pizzaStore, "치즈 피자", "owner1").id();
+        long backdated = order(chickenStore, "양념 치킨", "owner1").id();
+        jdbcTemplate.update("UPDATE orders SET created_at = created_at - INTERVAL '3 days' WHERE id = ?", backdated);
+
+        assertThat(orderService.getOrders("customer1", PageQuery.of(0, 20)))
+                .extracting(OrderResponse::id).containsExactly(newer, older, backdated);
+        assertThat(keysetPages("owner1", 1)).containsExactly(List.of(newer), List.of(older), List.of(backdated));
+        assertThat(orderService.getStoreOrders(chickenStore.id(), "owner1", PageQuery.of(0, 20)))
+                .extracting(OrderResponse::id).containsExactly(older, backdated);
     }
 
     @Test

@@ -23,12 +23,12 @@ export default function AdminOwnerApplicationsPage() {
   // (예전 window.prompt는 브라우저가 대화상자를 막으면 창 없이 바로 취소되어 "눌러도 반응 없음"으로 보였음)
   const [rejecting, setRejecting] = useState<{ id: number; reason: string; touched: boolean } | null>(null);
 
-  const act = async (id: number, action: () => Promise<unknown>) => {
+  const act = async (id: number, action: () => Promise<unknown>, { reloadList = true } = {}) => {
     setBusyId(id);
     setActionError(null);
     try {
       await action();
-      reload();
+      if (reloadList) reload();
       return true;
     } catch (err) {
       setActionError(err);
@@ -46,8 +46,14 @@ export default function AdminOwnerApplicationsPage() {
       return;
     }
     const { id, reason } = rejecting;
-    // 실패하면 입력한 사유를 남겨 다시 시도할 수 있게 함 (성공하면 목록에서 빠지므로 닫음)
-    if (await act(id, () => adminApi.rejectOwner(id, reason.trim()))) setRejecting(null);
+    // 실패하면 입력한 사유를 남겨 다시 시도할 수 있게 함
+    // 성공하면 거절됨 탭으로 옮겨 방금 처리한 신청(사유·처리자)을 바로 보여 줌 — 승인 대기에 남으면 빈 목록만 보여 "처리됐나?"가 됨
+    // 탭이 바뀌면 목록을 새로 읽으므로 reload는 생략 (같은 요청 두 번 방지)
+    if (await act(id, () => adminApi.rejectOwner(id, reason.trim()), { reloadList: false })) {
+      setRejecting(null);
+      setPage(0);
+      setStatus('REJECTED');
+    }
   };
 
   const reasonError = rejecting ? rejectReasonError(rejecting.reason) : null;

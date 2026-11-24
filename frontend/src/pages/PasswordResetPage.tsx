@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { authApi } from '../api/endpoints';
-import { readResetToken } from '../auth/passwordResetToken';
+import { useFragmentToken } from '../auth/useFragmentToken';
 import { AuthShell } from '../components/AuthShell';
 import { ErrorMessage } from '../components/ErrorMessage';
 import { PrefetchLink } from '../components/PrefetchLink';
@@ -13,12 +13,8 @@ import { useToast } from '../components/Toast';
  * - 메일 링크(#token=)로 들어오면: 새 비밀번호 입력 → 재설정 → 로그인 화면
  */
 export default function PasswordResetPage() {
-  // 처음 한 번만 읽고 주소창에서 지움 — 뒤로 가기·방문 기록·화면 공유에 토큰이 남지 않도록
-  const [token] = useState(() => {
-    const t = readResetToken(window.location.hash);
-    if (window.location.hash) window.history.replaceState(null, '', window.location.pathname);
-    return t;
-  });
+  // 조각 토큰은 화면 상태로 옮긴 뒤 주소창에서 지움 (읽기·지우기 분리 이유는 useFragmentToken)
+  const { token, invalid } = useFragmentToken();
 
   return (
     <AuthShell
@@ -28,12 +24,12 @@ export default function PasswordResetPage() {
         </PrefetchLink>
       }
     >
-      {token ? <NewPasswordForm token={token} /> : <RequestLinkForm />}
+      {token ? <NewPasswordForm token={token} /> : <RequestLinkForm brokenLink={invalid} />}
     </AuthShell>
   );
 }
 
-function RequestLinkForm() {
+function RequestLinkForm({ brokenLink }: { brokenLink: boolean }) {
   const [email, setEmail] = useState('');
   const [sent, setSent] = useState(false);
   const [error, setError] = useState<unknown>(null);
@@ -59,6 +55,12 @@ function RequestLinkForm() {
         <h2>비밀번호 찾기</h2>
         <p>인증을 마친 이메일로 재설정 링크를 보내 드려요. 인증하지 않은 주소로는 메일이 가지 않아요.</p>
       </div>
+      {/* 메일 앱이 링크를 자르거나 바꾼 경우 — 조용히 이메일 입력으로 보내지 않고 이유를 알려 줌 */}
+      {brokenLink && !sent && (
+        <div className="card" role="alert">
+          <p>재설정 링크가 올바르지 않아요. 메일의 링크를 그대로 열었는지 확인하거나 아래에서 다시 요청해 주세요.</p>
+        </div>
+      )}
       {sent ? (
         // 가입되지 않은 주소에도 같은 안내 — 화면으로 가입 여부를 알 수 없게 (서버도 항상 202)
         <div className="card" role="status">

@@ -353,6 +353,8 @@ Docker로 Render 무료 사양을 흉내 낸 값 — **Render 실제 CPU 배분�
   - 방문자(소셜 가입 등)가 낸 사장님 전환 신청은 체험 관리자 화면의 승인 대기·승인됨·거절됨 어디에도 안 보임(의도, 화면에 안내 문구 — 2026-11-24 점검에서 "신청 누락"으로 보였던 원인). 저장 여부는 Neon SQL Editor에서 확인:
     `SELECT a.id, a.status, a.business_name, a.requested_at FROM owner_applications a JOIN users u ON u.id = a.user_id WHERE u.username = '<아이디>';`
 - **초기화**: 관리자 정산 관리 화면 "데모 데이터 초기화" 버튼(`POST /api/admin/demo-data/reset`, 데모 관리자도 가능) → 방문자가 확정·지급·승인·주문한 결과를 지우고 처음 상태로. 데모 회원은 남아 로그인 유지, 다른 방문자 매장은 그대로, 1분 간격 제한 (`docs/api.md` 배포 데모 체험)
+- 초기화 뒤 방문자 브라우저의 장바구니(localStorage)는 서버가 지울 수 없어 사라진 메뉴 id를 가리킬 수 있음 → 장바구니 화면이 담긴 메뉴를 `GET /api/menus/{id}`로 다시 확인해 "판매 종료" 안내·빼기 버튼, 그동안 주문 버튼 막음(#98, `frontend/src/cart/cartValidation`). 확인 없이 주문해도 서버가 404 `MENU_NOT_FOUND`로 막음
+- 주문 목록은 주문 시각 최신순(#98) — 2단계 지난 3일 주문은 나중에 만들어 id가 크지만 시각이 과거라 아래에 나옴. 승인 대기 신청 "데모 떡집"의 신청 시각은 시드 시각 2시간 전(`now.minusHours(2)`, 대기 중인 신청처럼 보이도록) — 실제 확인 시각과 2시간 차이가 나는 것은 시간대 버그가 아님
 - 초기화는 결제·정산 기록 불변 원칙의 예외 — 실제 거래가 아닌 데모 매장 데이터만, `demo-data.enabled=true`일 때만(꺼진 배포는 404)
 - 회원까지 다시 만들려면: 데모 행을 지우고 재시작 (또는 Neon 브랜치 초기화)
 - 비밀번호는 정해진 값이 없음 — 배포하는 사람이 정해 Render에 넣음(8자 이상). 기록은 `.env`(git 제외), 변수 설명은 `.env.example` 끝 "배포 데모 데이터"

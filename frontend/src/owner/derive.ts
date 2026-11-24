@@ -246,8 +246,18 @@ export function effectiveStoreId(myStoreIds: number[], selectedId: number | null
   return myStoreIds[0] ?? null;
 }
 
+/**
+ * 주문 최신순 비교 — 주문 시각 내림차순, 같으면 id 내림차순 (서버 OrderRepository.NEWEST_FIRST와 같은 기준, #98)
+ * id로만 정렬하면 데모 시더처럼 지난 주문을 나중에 넣고 시각만 과거로 기록한 주문이 맨 위로 옴
+ * createdAt은 서버의 오프셋 없는 서울 시각 문자열(같은 형식) → 문자열 비교로 시각 순서가 됨
+ */
+export function compareNewestFirst(a: Pick<Order, 'id' | 'createdAt'>, b: Pick<Order, 'id' | 'createdAt'>): number {
+  if (a.createdAt !== b.createdAt) return a.createdAt < b.createdAt ? 1 : -1;
+  return b.id - a.id;
+}
+
 /** 선택 매장의 주문만, 최신순 — 서버도 매장별 API로 거르지만 매장 전환 직후 이전 매장 응답이 섞여 보이지 않도록 한 번 더 */
 export function ordersOfStore(orders: Order[], storeId: number | null): Order[] {
   if (storeId == null) return [];
-  return orders.filter((o) => o.storeId === storeId).sort((a, b) => b.id - a.id);
+  return orders.filter((o) => o.storeId === storeId).sort(compareNewestFirst);
 }

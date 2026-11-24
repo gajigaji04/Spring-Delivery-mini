@@ -466,3 +466,16 @@ GROUP BY 1, 2, 3 \watch 1
 - 측정 중에도 Outbox 발행기·알림 Consumer·알림 발송기가 같은 커넥션 풀을 씀 → Hikari 지표에 포함됨 (운영과 같은 조건)
 - 로그인은 setup에서 VU당 1번(BCrypt 비용이 흐름 수치에 섞이지 않도록) → 로그인 자체의 동시성은 측정하지 않음
 - 주문은 메뉴 목록 첫 페이지의 매장 5곳에 몰림 → 매장 행은 잠그지 않으므로 영향은 없다고 판단 (확인하지 않음)
+
+## 12. 주문 목록 최신순 정렬 (#98)
+
+주문 목록(`GET /api/orders` OFFSET·keyset, `GET /api/stores/{id}/orders`)을 **최신 주문이 위**로 바꿈 — 주문 시각(`created_at`) 내림차순, 같으면 id 내림차순(`OrderRepository.NEWEST_FIRST`). 매장·메뉴·결제·정산 등 다른 목록은 id 오름차순 그대로.
+
+| 항목 | 내용 |
+|---|---|
+| 왜 id가 아니라 주문 시각 | id 순서 ≠ 주문 시각 순서일 수 있음 — 데모 시더가 지난 3일 정산용 주문을 "지금" 주문보다 나중에 넣고 `created_at`만 과거로 기록. 실제 주문은 저장 시각이 찍혀 id와 순서가 같음 |
+| keyset 위치 | API 형태(`afterId`·`X-Next-After-Id`)는 그대로. 서버가 `afterId` 주문의 `created_at`을 PK로 한 번 읽고(`findCreatedAtById`) `created_at < ? OR (created_at = ? AND id < ?)`로 이어 읽음 → 다음 페이지는 쿼리 1번 추가(첫 페이지는 3번 그대로). 없는 주문 id면 400 |
+| 인덱스 (V25) | `(user_id, created_at, id)`·`(store_id, created_at, id)` — 오름차순 인덱스를 거꾸로 읽어(Index Scan Backward) 정렬 없이 처리(`OrderListIndexMigrationTest`의 EXPLAIN). V12의 `(user_id, id)`·`(store_id, id)`는 교체(앞부분이 FK 검사·고객 진행 중 주문 확인·결제 목록의 본인 주문 찾기 역할을 그대로 함) |
+| 점주 전체 주문 keyset | 6장 남은 병목과 같음 — `stores.owner_id` 조인이라 인덱스로 개선하지 않음. 정렬 기준이 PK가 아니게 되어 9장 수치(PK를 afterId 다음부터 읽음)보다 느려질 수 있음. 프론트 사장님 화면은 이 경로를 쓰지 않음(매장별 API) |
+| 측정 | **하지 않음** — 4·9장과 같은 30만 건 데이터로 EXPLAIN·k6 재측정이 남음 |
+| 테스트 | `StoreOrderIntegrationTest`(주문 시각을 과거로 바꾼 주문이 OFFSET·keyset·매장별 모두 아래로, 기존 순서 기대값을 최신순으로), `OrderServiceTest`(NEWEST_FIRST `Pageable`, 커서 시각 조회, 없는 afterId 400), `OrderListIndexMigrationTest`(V25 인덱스·EXPLAIN) |

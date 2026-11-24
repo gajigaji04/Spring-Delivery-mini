@@ -21,10 +21,10 @@ npm run build             # tsc 타입 검사 + 프로덕션 빌드
 | `src/api/errorMessages.ts` | 오류 코드(`code`)별 사용자 문구(`userMessage`) — `ErrorMessage`·토스트가 사용. 매핑 없으면 서버 `message` (#77) |
 | `src/address/` | 다음 우편번호 스크립트 지연 로딩(`postcode.ts`, '주소 검색'을 누를 때 처음 1번), 주소 검증(`validateAddress.ts`, 서버 `DeliveryAddress`와 같은 규칙) (#77) |
 | `src/auth/` | Access Token 메모리 보관(`tokenStore`), 앱 시작 시 refresh 1번, 역할별 화면 가드(`RequireRole`, 최종 판단은 서버 403) |
-| `src/cart/` | 장바구니 — 한 매장 메뉴만, 같은 메뉴는 합침 (서버 400 규칙과 동일). 회원별 `localStorage`(`cart:v1:{회원 id}`, `cartStorage.ts`)에 저장해 새로고침에도 유지 — 계정을 바꾸면 그 회원 것만 보이고, 로그아웃하면 화면에서만 비움(같은 회원 재로그인 시 복원), 주문 완료·비우기면 키 삭제 |
+| `src/cart/` | 장바구니 — 한 매장 메뉴만, 같은 메뉴는 합침 (서버 400 규칙과 동일). 회원별 `localStorage`(`cart:v1:{회원 id}`, `cartStorage.ts`)에 저장해 새로고침에도 유지 — 계정을 바꾸면 그 회원 것만 보이고, 로그아웃하면 화면에서만 비움(같은 회원 재로그인 시 복원), 주문 완료·비우기면 키 삭제. 장바구니 화면은 담은 메뉴를 `GET /api/menus/{id}`로 다시 확인(`cartValidation.ts`) — 404·다른 매장이면 "판매 종료" 안내 + "판매 종료 메뉴 빼기"(남은 메뉴 이름·가격도 최신화), 그동안 주문 버튼 막음. 사장님 메뉴 삭제·데모 데이터 초기화(메뉴 id 교체)를 브라우저 저장 장바구니가 모르기 때문. 네트워크 오류·5xx는 막지 않음(최종 판단은 주문 API 404 `MENU_NOT_FOUND`) |
 | `src/orders/` · `src/hooks/usePolling.ts` | 고객 주문 상태 자동 갱신 규칙(`orderLive.ts`) — 아래 "고객 주문 상태 자동 갱신" |
 | `src/routes/pages.ts` | 화면별 지연 로딩 + 미리 받기(`preloadPage`, `preloadWhenIdle`) |
-| `src/components/` | `Layout`(헤더 알약 메뉴·매장 전환·계정 메뉴, 960px 이하 하단 탭바), `AuthShell`(로그인·가입 화면), `BootScreen`, `Toast`, `Icons`(인라인 SVG), `PrefetchLink`, `DelayedSpinner`(0.4초 지연), `Money`·`won`(₩, tabular-nums), `ErrorMessage`(문의 코드 = traceId), `Pager`, `AddressFields`(우편번호·도로명은 검색 결과로, 상세만 입력) |
+| `src/components/` | `Layout`(헤더 알약 메뉴·매장 전환·계정 메뉴, 960px 이하 하단 탭바), `AuthShell`(로그인·가입·비밀번호 찾기·이메일 인증·소셜 결과 화면 — 자체 헤더라 `routes/layoutPaths.isBarePath`로 앱 헤더 제외), `BootScreen`, `Toast`, `Icons`(인라인 SVG), `PrefetchLink`, `DelayedSpinner`(0.4초 지연), `Money`·`won`(₩, tabular-nums), `ErrorMessage`(문의 코드 = traceId), `Pager`, `AddressFields`(우편번호·도로명은 검색 결과로, 상세만 입력) |
 | `src/owner/` | `OwnerContext`(내 매장·선택 매장·주문 목록·수락/배달 완료 — 주문은 **선택 매장만** `GET /api/stores/{id}/orders`로 받음(서버가 본인 매장 확인, 2026-11-24), 매장을 바꾸면 다시 조회), `useStoreSettlements`(선택 매장 최근 n일 정산), `derive.ts`(오늘 집계·14일 매출·주간 묶음·CSV — 순수 함수, 테스트 대상) |
 | `src/pages/` | 랜딩(`/`, 사장님 소개) / 고객: 매장(`/stores`)·매장 상세·장바구니·주문(keyset)·주문 상세(결제·취소)·결제 내역·사장님 전환 신청(내 정보) / 사장님: 홈(`/owner`)·주문 관리(`/owner/orders`)·정산(`/owner/settlements`)·매장 정보·메뉴 등록(`/owner/stores`) / 관리자: 정산 확정·지급, 사장님 전환 승인·거절, Outbox 재발행 / 공통: 로그인·가입(항상 고객)·알림·내 정보 |
 | `src/styles/` | `tokens.css`(디자인 토큰), `base.css`(공통 컴포넌트 + 고객·관리자 화면이 쓰는 기존 클래스), `owner.css`(사장님 화면·로그인), `fonts.ts`(웹폰트, 첫 렌더 뒤 로드) |
@@ -58,7 +58,7 @@ npm run build             # tsc 타입 검사 + 프로덕션 빌드
 - 가입 화면에 역할 선택 없음 — 서버가 고객으로만 가입시킴 (`role: OWNER`는 400)
 - 고객이 '내 정보'에서 상호로 신청 → 관리자 '사장님 승인' 화면에서 승인·거절(사유)
 - 승인돼도 지금 Access Token은 `role=CUSTOMER` → '사장님 화면으로 전환' 버튼이 `refresh` 후 `/me`를 다시 받아 OWNER 메뉴로 바뀜
-- 거절은 행 아래에 펼쳐지는 사유 입력 폼(필수·255자, "거절 확정"·"취소") — 예전 `window.prompt`는 브라우저가 대화상자를 막으면 창 없이 취소되어 "반응 없음"으로 보였음(2026-11-24). 검사 로직 `src/admin/ownerApplications.ts`
+- 거절은 행 아래에 펼쳐지는 사유 입력 폼(필수·255자, "거절 확정"·"취소") — 예전 `window.prompt`는 브라우저가 대화상자를 막으면 창 없이 취소되어 "반응 없음"으로 보였음(2026-11-24). 검사 로직 `src/admin/ownerApplications.ts`. 거절에 성공하면 **거절됨 탭으로 자동 전환**(승인 대기에 남으면 빈 목록만 보여 처리 여부를 알 수 없었음, #98)
 - 체험 관리자(데모 관리자)로 들어오면 목록 위에 "데모 회원의 신청만 보임" 안내 — 서버가 다른 회원 신청을 목록에서 빼기 때문(`docs/api.md` 배포 데모 체험)
 
 ## 연동 규칙 (docs/api.md "인증 토큰")
@@ -117,13 +117,13 @@ npm run build             # tsc 타입 검사 + 프로덕션 빌드
 
 ## 비밀번호 찾기·변경 (V23)
 - 로그인 화면 "비밀번호를 잊으셨나요?" → `pages/PasswordResetPage`(`/password-reset`): 이메일 입력 → 가입 여부와 관계없이 같은 안내(서버도 항상 202)
-- 메일 링크 `/password-reset#token=...` → 같은 화면이 새 비밀번호 단계로. 토큰은 `auth/passwordResetToken.readResetToken`으로 읽고 **바로 주소창에서 지움**(`history.replaceState`) — 조각(`#`)이라 서버 로그에도 남지 않음. 성공하면 모든 기기 로그아웃 → 로그인 화면
+- 메일 링크 `/password-reset#token=...` → 같은 화면이 새 비밀번호 단계로. 토큰은 `auth/useFragmentToken`(내부 `readFragmentToken`)으로 읽어 화면 상태에 두고, **화면이 붙은 뒤(useEffect) 주소창에서 지움**(`history.replaceState`, `history.state` 유지). 렌더 중에 지우면 React가 첫 렌더를 버리고 다시 그릴 때 토큰을 잃음(#98). `token=`이 있는데 형식이 깨졌으면 이메일 입력 위에 "링크가 올바르지 않아요" 안내, 만료·사용된 토큰은 서버 400 `PASSWORD_RESET_TOKEN_INVALID` 메시지 + 다시 요청 링크 — 조각(`#`)이라 서버 로그에도 남지 않음. 성공하면 모든 기기 로그아웃 → 로그인 화면
 - 가입 화면 이메일(선택), 내 정보 `EmailSection`·`PasswordSection`: 비밀번호가 있으면 현재 비밀번호 입력, 소셜 전용 회원(`hasPassword: false`)은 "비밀번호 설정". 비밀번호 변경은 **`credentials: 'include'`**로 Refresh 쿠키를 보내 지금 기기 로그인만 남김
 - 데모 계정(`me.demoAccount`, 관리자 포함)은 두 폼을 숨김 (서버도 403 `DEMO_ACCOUNT_PROTECTED`)
 
 ## 이메일 인증 (V24)
 - 가입·내 정보 `EmailSection`의 이메일은 바로 바뀌지 않고 인증 메일 발송 → 내 정보에 `pendingEmail`('인증 대기'), 미인증 주소(`emailVerified: false`)는 '미인증' 표시
-- 메일 링크 `/email-verification#token=...` → `pages/EmailVerificationPage`: 토큰을 읽고 주소창에서 지움, **'이메일 인증하기' 버튼을 눌러야** 호출(메일 검사기의 미리 열기로 토큰이 쓰이지 않도록). 로그인 없이 동작, 로그인 상태면 성공 후 `reloadMe`
+- 메일 링크 `/email-verification#token=...` → `pages/EmailVerificationPage`: 토큰은 비밀번호 재설정과 같은 `useFragmentToken`으로 읽고 주소창에서 지움, **'이메일 인증하기' 버튼을 눌러야** 호출(메일 검사기의 미리 열기로 토큰이 쓰이지 않도록). 로그인 없이 동작, 로그인 상태면 성공 후 `reloadMe`
 - Vercel은 기존 `/(.*) → /index.html` rewrite로 처리 (vercel.json 변경 없음)
 
 ## 서버 깨우기 (무료 배포, 2026-11-23)
@@ -157,7 +157,7 @@ npm run build             # tsc 타입 검사 + 프로덕션 빌드
 
 ## 알려진 제약
 - 실시간 알림은 서버 단일 인스턴스 기준(`docs/architecture.md` 실시간 주문 알림 장). Kafka가 멈추면 알림이 오지 않는데 연결은 살아 있어 `실시간 연결됨`으로 보임 — 수동 새로고침 필요
-- 주문 목록 API가 id 오름차순만 지원 → 사장님 화면은 최신 주문을 보려고 keyset(100건씩)으로 **전체 주문을 끝까지** 받음(상한 5,000건, 넘으면 화면에 안내). 주문이 많아지면 백엔드에 최신순·기간(`from`) 필터 필요 — 오늘 집계·14일 매출도 서버 집계 API가 있으면 더 정확·가벼움
+- 주문 목록 API는 최신 주문이 위(주문 시각 내림차순, #98) — 사장님 화면은 매장 주문을 100건씩 상한 5,000건까지 받아(넘으면 화면에 안내) `owner/derive.compareNewestFirst`로 같은 기준 정렬, 홈 처리 대기열만 오래 기다린 순으로 뒤집음. 상한을 넘으면 오래된 주문부터 빠짐. 주문이 많아지면 백엔드에 기간(`from`) 필터 필요 — 오늘 집계·14일 매출도 서버 집계 API가 있으면 더 정확·가벼움
 - 사장님 정산 화면은 선택 매장 + 최근 7·14·30일만 (이전 화면의 상태·임의 기간·전체 매장 조회는 디자인에서 빠짐, API는 그대로 지원)
 - 메뉴 API에 매장 필터가 없어 매장 상세는 전체 메뉴를 페이지로 받아 거름 → 메뉴가 많아지면 `GET /api/menus?storeId=` 추가 필요 (백엔드)
 - 매장 목록의 검색·정렬도 프론트 처리(최대 매장·메뉴 각 1,000건) → 커지면 서버 검색·정렬(`GET /api/stores?q=&sort=`)과 매장별 메뉴 요약(메뉴 수·최저가)을 응답에 포함 필요. 음식 카테고리 필터·대표 이미지·영업 상태는 매장 컬럼 추가(새 마이그레이션)가 먼저 필요

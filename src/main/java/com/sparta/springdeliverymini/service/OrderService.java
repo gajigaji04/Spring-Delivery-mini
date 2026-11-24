@@ -17,6 +17,7 @@ import com.sparta.springdeliverymini.repository.MenuRepository;
 import com.sparta.springdeliverymini.repository.OrderRepository;
 import com.sparta.springdeliverymini.repository.PaymentRepository;
 import com.sparta.springdeliverymini.repository.UserRepository;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Slice;
 import org.springframework.data.domain.SliceImpl;
 import org.springframework.http.HttpStatus;
@@ -60,13 +61,13 @@ public class OrderService {
 
         // 2. CUSTOMER는 본인의 주문만 조회
         if (currentUser.getRole() == Role.CUSTOMER) {
-            return orderRepository.findAllByUserId(currentUser.getId(), pageQuery.toPageable())
+            return orderRepository.findAllByUserId(currentUser.getId(), pageQuery.toPageable(OrderRepository.NEWEST_FIRST))
                     .map(OrderResponse::from);
         }
 
         // 3. OWNER는 본인의 모든 매장에 들어온 주문만 조회
         if (currentUser.getRole() == Role.OWNER) {
-            return orderRepository.findAllByStoreOwnerId(currentUser.getId(), pageQuery.toPageable())
+            return orderRepository.findAllByStoreOwnerId(currentUser.getId(), pageQuery.toPageable(OrderRepository.NEWEST_FIRST))
                     .map(OrderResponse::from);
         }
 
@@ -74,7 +75,8 @@ public class OrderService {
     }
 
     // 주문 목록 조회 — keyset 페이징 (#54, ?afterId=)
-    // 조회 대상·권한·정렬(id 오름차순)은 getOrders와 같고, 위치만 OFFSET 대신 마지막으로 받은 id로 지정
+    // 조회 대상·권한·정렬(최신 주문이 위, #98)은 getOrders와 같고, 위치만 OFFSET 대신 마지막으로 받은 주문으로 지정
+    // afterId = 0이면 처음부터, 그 외에는 그 주문의 (주문 시각, id) 다음부터. 없는 주문 id면 위치를 정할 수 없어 400
     public Slice<OrderResponse> getOrdersAfter(String username, KeysetQuery keysetQuery) {
         User currentUser = userRepository.findByUsername(username)
                 .orElseThrow(() ->
@@ -84,19 +86,25 @@ public class OrderService {
                         )
                 );
 
-        if (currentUser.getRole() == Role.CUSTOMER) {
-            return orderRepository.findAllByUserIdAndIdGreaterThan(
-                            currentUser.getId(), keysetQuery.afterId(), keysetQuery.toPageable())
-                    .map(OrderResponse::from);
+        if (currentUser.getRole() != Role.CUSTOMER && currentUser.getRole() != Role.OWNER) {
+            return new SliceImpl<>(List.of());
+        }
+        boolean customer = currentUser.getRole() == Role.CUSTOMER;
+        Pageable pageable = keysetQuery.toPageable(OrderRepository.NEWEST_FIRST);
+
+        if (keysetQuery.fromStart()) {
+            Slice<Order> first = customer
+                    ? orderRepository.findAllByUserId(currentUser.getId(), pageable)
+                    : orderRepository.findAllByStoreOwnerId(currentUser.getId(), pageable);
+            return first.map(OrderResponse::from);
         }
 
-        if (currentUser.getRole() == Role.OWNER) {
-            return orderRepository.findAllByStoreOwnerIdAndIdGreaterThan(
-                            currentUser.getId(), keysetQuery.afterId(), keysetQuery.toPageable())
-                    .map(OrderResponse::from);
-        }
-
-        return new SliceImpl<>(List.of());
+        LocalDateTime cursorAt = orderRepository.findCreatedAtById(keysetQuery.afterId())
+                .orElseThrow(() -> new ApiException(HttpStatus.BAD_REQUEST, "afterId: 없는 주문입니다."));
+        Slice<Order> next = customer
+                ? orderRepository.findAllByUserIdBefore(currentUser.getId(), cursorAt, keysetQuery.afterId(), pageable)
+                : orderRepository.findAllByStoreOwnerIdBefore(currentUser.getId(), cursorAt, keysetQuery.afterId(), pageable);
+        return next.map(OrderResponse::from);
     }
 
     // 주문 단건 조회 (#62) — CUSTOMER는 본인 주문, OWNER는 본인 매장에 들어온 주문만
@@ -144,8 +152,8 @@ public class OrderService {
         // 3. 매장 소유권 확인 — 매장이 없으면 404, 다른 OWNER의 매장이면 403
         Store store = storeService.getOwnedStore(storeId, currentUser);
 
-        // 4. 해당 매장에 들어온 주문 조회 (페이지 단위, id 오름차순)
-        return orderRepository.findAllByStoreId(store.getId(), pageQuery.toPageable())
+        // 4. 해당 매장에 들어온 주문 조회 (페이지 단위, 최신 주문이 위 — 사장님 화면이 앞 페이지만 받아도 최근 주문은 빠지지 않음)
+        return orderRepository.findAllByStoreId(store.getId(), pageQuery.toPageable(OrderRepository.NEWEST_FIRST))
                 .map(OrderResponse::from);
     }
 

@@ -459,17 +459,18 @@ class OrderServiceTest {
     @Test
     void OWNER는_본인의_모든_매장_주문을_조회한다() {
         given(userRepository.findByUsername("owner1")).willReturn(Optional.of(owner));
-        given(orderRepository.findAllByStoreOwnerId(3L, PAGE.toPageable()))
+        given(orderRepository.findAllByStoreOwnerId(3L, PAGE.toPageable(OrderRepository.NEWEST_FIRST)))
                 .willReturn(new SliceImpl<>(List.of(order(OrderStatus.ORDER_REQUEST))));
 
         assertThat(orderService.getOrders("owner1", PAGE)).hasSize(1);
     }
 
     @Test
-    void 주문_목록은_요청한_페이지를_id_오름차순으로_조회한다() {
-        // 정렬 기준이 고유(id)해야 페이지 사이에 같은 주문이 중복·누락되지 않음
+    void 주문_목록은_요청한_페이지를_최신_주문부터_조회한다() {
+        // 주문 시각 내림차순 + 같은 시각이면 id 내림차순 — 정렬이 고유해야 페이지 사이에 같은 주문이 중복·누락되지 않음
         given(userRepository.findByUsername("customer1")).willReturn(Optional.of(customer));
-        Pageable expected = PageRequest.of(2, 50, Sort.by(Sort.Direction.ASC, "id"));
+        Pageable expected = PageRequest.of(2, 50,
+                Sort.by(Sort.Direction.DESC, "createdAt").and(Sort.by(Sort.Direction.DESC, "id")));
         given(orderRepository.findAllByUserId(customer.getId(), expected))
                 .willReturn(new SliceImpl<>(List.of(order(OrderStatus.ORDER_REQUEST)), expected, true));
 
@@ -480,11 +481,13 @@ class OrderServiceTest {
     }
 
     @Test
-    void keyset_주문_목록은_afterId_이후를_첫_페이지_id_오름차순으로_조회한다() {
-        // 위치는 afterId 조건이 정하므로 OFFSET은 항상 0
+    void keyset_주문_목록은_afterId_주문의_시각과_id_다음부터_최신순_첫_페이지로_조회한다() {
+        // 위치는 afterId 주문의 (주문 시각, id) 조건이 정하므로 OFFSET은 항상 0
         given(userRepository.findByUsername("owner1")).willReturn(Optional.of(owner));
-        Pageable expected = PageRequest.of(0, 30, Sort.by(Sort.Direction.ASC, "id"));
-        given(orderRepository.findAllByStoreOwnerIdAndIdGreaterThan(3L, 120L, expected))
+        LocalDateTime cursorAt = LocalDateTime.of(2026, 11, 24, 12, 0);
+        given(orderRepository.findCreatedAtById(120L)).willReturn(Optional.of(cursorAt));
+        Pageable expected = PageRequest.of(0, 30, OrderRepository.NEWEST_FIRST);
+        given(orderRepository.findAllByStoreOwnerIdBefore(3L, cursorAt, 120L, expected))
                 .willReturn(new SliceImpl<>(List.of(order(OrderStatus.ORDER_REQUEST)), expected, true));
 
         Slice<OrderResponse> orders = orderService.getOrdersAfter("owner1", KeysetQuery.of(120L, 30));
@@ -494,17 +497,29 @@ class OrderServiceTest {
     }
 
     @Test
-    void keyset_고객은_본인_주문만_ADMIN은_빈_목록() {
+    void keyset_afterId가_없는_주문이면_위치를_정할_수_없어_400() {
         given(userRepository.findByUsername("customer1")).willReturn(Optional.of(customer));
-        given(orderRepository.findAllByUserIdAndIdGreaterThan(
-                customer.getId(), 0L, KeysetQuery.of(0L, 20).toPageable()))
+        given(orderRepository.findCreatedAtById(999L)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> orderService.getOrdersAfter("customer1", KeysetQuery.of(999L, 20)))
+                .isInstanceOf(ApiException.class)
+                .extracting("status").isEqualTo(HttpStatus.BAD_REQUEST);
+    }
+
+    @Test
+    void keyset_고객은_본인_주문만_ADMIN은_빈_목록() {
+        // afterId = 0은 처음부터 — 커서 조회 없이 첫 페이지
+        given(userRepository.findByUsername("customer1")).willReturn(Optional.of(customer));
+        given(orderRepository.findAllByUserId(
+                customer.getId(), KeysetQuery.of(0L, 20).toPageable(OrderRepository.NEWEST_FIRST)))
                 .willReturn(new SliceImpl<>(List.of(order(OrderStatus.ORDER_REQUEST))));
         given(userRepository.findByUsername("admin1"))
                 .willReturn(Optional.of(new User("admin1", "encoded", Role.ADMIN)));
 
         assertThat(orderService.getOrdersAfter("customer1", KeysetQuery.of(0L, 20))).hasSize(1);
         assertThat(orderService.getOrdersAfter("admin1", KeysetQuery.of(0L, 20))).isEmpty();
-        verify(orderRepository, never()).findAllByStoreOwnerIdAndIdGreaterThan(any(), any(), any());
+        verify(orderRepository, never()).findAllByStoreOwnerId(any(), any());
+        verify(orderRepository, never()).findCreatedAtById(any());
     }
 
     // ===== 매장별 주문 조회 =====
@@ -513,7 +528,7 @@ class OrderServiceTest {
     void 본인_매장의_주문을_조회한다() {
         given(userRepository.findByUsername("owner1")).willReturn(Optional.of(owner));
         given(storeService.getOwnedStore(20L, owner)).willReturn(store);
-        given(orderRepository.findAllByStoreId(20L, PAGE.toPageable()))
+        given(orderRepository.findAllByStoreId(20L, PAGE.toPageable(OrderRepository.NEWEST_FIRST)))
                 .willReturn(new SliceImpl<>(List.of(order(OrderStatus.ORDER_REQUEST))));
 
         List<OrderResponse> orders = orderService.getStoreOrders(20L, "owner1", PAGE).getContent();

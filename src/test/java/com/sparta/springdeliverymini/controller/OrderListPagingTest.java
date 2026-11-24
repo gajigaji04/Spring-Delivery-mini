@@ -3,6 +3,7 @@ package com.sparta.springdeliverymini.controller;
 import com.sparta.springdeliverymini.config.SecurityConfig;
 import com.sparta.springdeliverymini.dto.KeysetQuery;
 import com.sparta.springdeliverymini.dto.OrderResponse;
+import com.sparta.springdeliverymini.repository.OrderRepository;
 import com.sparta.springdeliverymini.dto.PageQuery;
 import com.sparta.springdeliverymini.entity.OrderStatus;
 import com.sparta.springdeliverymini.entity.Role;
@@ -73,7 +74,7 @@ class OrderListPagingTest {
     void afterId를_주면_keyset으로_조회하고_페이지_번호_헤더는_보내지_않는다() throws Exception {
         KeysetQuery query = KeysetQuery.of(7L, 2);
         given(orderService.getOrdersAfter("owner1", query)).willReturn(
-                new SliceImpl<>(List.of(order(9L), order(12L)), query.toPageable(), true));
+                new SliceImpl<>(List.of(order(9L), order(12L)), query.toPageable(OrderRepository.NEWEST_FIRST), true));
 
         mockMvc.perform(get("/api/orders").param("afterId", "7").param("size", "2")
                         .header(HttpHeaders.AUTHORIZATION, ownerToken()))
@@ -92,7 +93,7 @@ class OrderListPagingTest {
     void 마지막_페이지는_다음_위치_헤더가_없다() throws Exception {
         KeysetQuery query = KeysetQuery.of(12L, 20);
         given(orderService.getOrdersAfter("owner1", query)).willReturn(
-                new SliceImpl<>(List.of(order(15L)), query.toPageable(), false));
+                new SliceImpl<>(List.of(order(15L)), query.toPageable(OrderRepository.NEWEST_FIRST), false));
 
         mockMvc.perform(get("/api/orders").param("afterId", "12")
                         .header(HttpHeaders.AUTHORIZATION, ownerToken()))
@@ -105,7 +106,7 @@ class OrderListPagingTest {
     void 빈_결과는_빈_배열이고_다음_위치_헤더가_없다() throws Exception {
         KeysetQuery query = KeysetQuery.of(999L, 20);
         given(orderService.getOrdersAfter("owner1", query)).willReturn(
-                new SliceImpl<>(List.of(), query.toPageable(), false));
+                new SliceImpl<>(List.of(), query.toPageable(OrderRepository.NEWEST_FIRST), false));
 
         mockMvc.perform(get("/api/orders").param("afterId", "999")
                         .header(HttpHeaders.AUTHORIZATION, ownerToken()))

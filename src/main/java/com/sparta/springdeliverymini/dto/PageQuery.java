@@ -34,4 +34,9 @@ public record PageQuery(int page, int size) {
     public Pageable toPageable() {
         return PageRequest.of(page, size, Sort.by(Sort.Direction.ASC, "id"));
     }
+
+    // 정렬을 따로 정하는 목록 — 주문 목록은 최신 주문이 위 (OrderRepository.NEWEST_FIRST)
+    public Pageable toPageable(Sort sort) {
+        return PageRequest.of(page, size, sort);
+    }
 }

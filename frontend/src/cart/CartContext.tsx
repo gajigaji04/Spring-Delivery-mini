@@ -14,6 +14,8 @@ interface CartContextValue {
   total: number;
   add: (menu: Menu) => void;
   setQuantity: (menuId: number, quantity: number) => void;
+  /** 판매 종료 메뉴 빼기 + 남은 메뉴의 이름·가격을 서버 최신 값으로 (cart/cartValidation 결과) */
+  applyCheck: (staleIds: number[], current: Map<number, Menu>) => void;
   clear: () => void;
 }
 
@@ -66,13 +68,19 @@ export function CartProvider({ children }: { children: ReactNode }) {
     );
   }, [setLines]);
 
+  const applyCheck = useCallback((staleIds: number[], current: Map<number, Menu>) => {
+    setLines((prev) =>
+      prev.filter((l) => !staleIds.includes(l.menu.id)).map((l) => ({ ...l, menu: current.get(l.menu.id) ?? l.menu })),
+    );
+  }, [setLines]);
+
   const clear = useCallback(() => setLines(() => []), [setLines]);
 
   const value = useMemo(() => {
     // 화면 표시용 합계 — 실제 결제 금액은 서버가 주문 당시 메뉴 가격으로 다시 계산
     const total = lines.reduce((sum, l) => sum + l.menu.price * l.quantity, 0);
-    return { lines, storeId: lines[0]?.menu.storeId ?? null, total, add, setQuantity, clear };
-  }, [lines, add, setQuantity, clear]);
+    return { lines, storeId: lines[0]?.menu.storeId ?? null, total, add, setQuantity, applyCheck, clear };
+  }, [lines, add, setQuantity, applyCheck, clear]);
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;
 }

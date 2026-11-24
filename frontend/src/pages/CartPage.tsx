@@ -1,15 +1,17 @@
 import { useCallback, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ApiError } from '../api/client';
-import { orderApi } from '../api/endpoints';
+import { menuApi, orderApi } from '../api/endpoints';
 import { DEMO_ADDRESS, validateDeliveryRequest } from '../address/orderExtras';
 import { normalizeAddress, validateAddress, type AddressErrors, type AddressInput } from '../address/validateAddress';
 import { useCart } from '../cart/CartContext';
+import { checkCartMenus } from '../cart/cartValidation';
 import { AddressFields } from '../components/AddressFields';
 import { DeliveryRequestField } from '../components/DeliveryRequestField';
 import { IconInfo } from '../components/Icons';
 import { ErrorMessage } from '../components/ErrorMessage';
 import { Money } from '../components/format';
+import { useAsync } from '../hooks/useAsync';
 
 export default function CartPage() {
   const cart = useCart();
@@ -26,6 +28,15 @@ export default function CartPage() {
   const addressErrors: AddressErrors = touched && mode === 'search' ? validateAddress(address) : {};
   const onAddressChange = useCallback((next: AddressInput) => setAddress(next), []);
   const [submitting, setSubmitting] = useState(false);
+  // 담은 메뉴가 아직 판매 중인지 서버에 다시 확인 — 데모 데이터 초기화·메뉴 삭제를 브라우저 장바구니는 모름 (cart/cartValidation)
+  // 수량만 바뀔 때는 다시 묻지 않도록 메뉴 구성(id·매장)이 바뀔 때만
+  const menuKey = cart.lines.map((l) => `${l.menu.id}:${l.menu.storeId}`).join(',');
+  const check = useAsync(
+    () => (cart.lines.length > 0 ? checkCartMenus(cart.lines, menuApi.get) : Promise.resolve(null)),
+    [menuKey],
+  );
+  const staleIds = check.data?.staleIds ?? [];
+  const staleNames = cart.lines.filter((l) => staleIds.includes(l.menu.id)).map((l) => l.menu.name);
 
   if (cart.lines.length === 0) {
     return (
@@ -54,6 +65,8 @@ export default function CartPage() {
     } catch (err) {
       // 서버 주소 검증 실패(INVALID_ADDRESS)는 주소 칸 안내도 함께 보이게
       if (err instanceof ApiError && err.code === 'INVALID_ADDRESS') setTouched(true);
+      // 확인 뒤에 메뉴가 사라진 경우 — 다시 확인해 어떤 메뉴인지 표시
+      if (err instanceof ApiError && err.code === 'MENU_NOT_FOUND') check.reload();
       setError(err);
     } finally {
       setSubmitting(false);
@@ -63,11 +76,23 @@ export default function CartPage() {
   return (
     <section>
       <h1>장바구니</h1>
+      {staleIds.length > 0 && check.data && (
+        <div className="card" role="alert">
+          <p>
+            판매가 끝난 메뉴가 있어요: <b>{staleNames.join(', ')}</b>
+          </p>
+          <p className="muted">매장에서 메뉴를 내렸거나 데모 데이터가 초기화됐을 수 있어요. 빼고 나면 주문할 수 있어요.</p>
+          <button type="button" className="btn" onClick={() => cart.applyCheck(staleIds, check.data!.current)}>
+            판매 종료 메뉴 빼기
+          </button>
+        </div>
+      )}
       <ul className="list">
         {cart.lines.map((l) => (
           <li key={l.menu.id} className="card row" style={{ justifyContent: 'space-between' }}>
             <span>
               {l.menu.name} · <Money value={l.menu.price} />
+              {staleIds.includes(l.menu.id) && <span className="muted"> · 판매 종료</span>}
             </span>
             <span className="row">
               <button type="button" className="btn btn--ghost" onClick={() => cart.setQuantity(l.menu.id, l.quantity - 1)}>
@@ -118,7 +143,7 @@ export default function CartPage() {
         </div>
         <DeliveryRequestField value={deliveryRequest} onChange={setDeliveryRequest} error={touched ? requestError : null} />
         <ErrorMessage error={error} />
-        <button className="btn" disabled={submitting}>
+        <button className="btn" disabled={submitting || staleIds.length > 0}>
           주문하기
         </button>
       </form>
