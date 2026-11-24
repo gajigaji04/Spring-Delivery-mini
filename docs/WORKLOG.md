@@ -34,6 +34,8 @@ CLAUDE.md에서 옮긴 진행 상황·다음 작업·남은 후속 기록(2026-1
   - 2-9 가짜 PG 화면 "데모 결제 승인" 표기 / 2-10 알림 문구에서 Kafka 제거 / 2-11 데모 403 메시지를 완성 문장으로(`"관리을(를)"` 제거)
   - 3-1 조사(코드 변경 없음): 관리자 API는 **부분 환불·전액 환불(`/api/admin/payments/{id}/refunds`·`/refund`), 수수료율(`PUT·DELETE /api/admin/stores/{id}/fee-rate`), 재집계(`POST /api/admin/settlements/reaggregate`·`GET .../aggregation-failures`)는 있고 프론트 미연결**. **관리자 결제 목록 API는 없음**(환불할 결제 id를 화면에서 찾을 방법이 없음) → 후속 이슈 후보
   - 3-2 조사: Actuator는 Render에서만(`/actuator/health`만 공개, 상세 숨김). Vercel은 `/api`·`/oauth2`·`/login/oauth2`만 프록시 → `/actuator/*`는 SPA 200(의도). 프록시 불필요
+  - 4-1 일반 회원(`google_m4rn7rf5vc`) 사장님 전환 신청이 관리자 목록에 없음: 저장 실패가 아니라 데모 관리자 목록 필터(`DemoAdminScope`, 데모 회원만) — 배포 DB에는 일반 관리자가 없어 체험 관리자로만 봤기 때문. 동작은 유지하고 화면에 안내 문구 추가. 저장 확인은 Neon에서 `owner_applications` JOIN `users` 조회
+  - 4-2 거절 `window.prompt` → 행 아래 사유 입력 폼(필수·255자, 거절 확정·취소). 기본 사유 경로는 원래 없음(DTO·엔티티·DB CHECK 모두 필수)
 
 ## 진행 상황 (#78 머지 완료(PR #82) / 소셜 로그인 + 포트폴리오 보강 커밋 완료(`60e0136`)·푸시·PR 전 — 브랜치 `feat/79-social-login`, 2026-11-22)
 - 완료: 매장·메뉴·주문, 결제(수수료), 일 정산 집계·확정·지급, 취소·환불·이월(#30), 매장별 수수료율(#32),

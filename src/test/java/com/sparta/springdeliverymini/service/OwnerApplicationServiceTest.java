@@ -1,5 +1,7 @@
 package com.sparta.springdeliverymini.service;
 
+import com.sparta.springdeliverymini.config.DemoDataProperties;
+import com.sparta.springdeliverymini.dto.PageQuery;
 import com.sparta.springdeliverymini.entity.OwnerApplication;
 import com.sparta.springdeliverymini.entity.OwnerApplicationStatus;
 import com.sparta.springdeliverymini.entity.Role;
@@ -7,12 +9,14 @@ import com.sparta.springdeliverymini.entity.User;
 import com.sparta.springdeliverymini.exception.ApiException;
 import com.sparta.springdeliverymini.repository.OrderRepository;
 import com.sparta.springdeliverymini.repository.OwnerApplicationRepository;
+import com.sparta.springdeliverymini.repository.StoreRepository;
 import com.sparta.springdeliverymini.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.SliceImpl;
 import org.springframework.http.HttpStatus;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -20,6 +24,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -27,6 +32,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
@@ -126,6 +132,28 @@ class OwnerApplicationServiceTest {
                 OwnerApplicationStatus.REQUESTED, com.sparta.springdeliverymini.dto.PageQuery.of(0, 20), "own")),
                 HttpStatus.FORBIDDEN);
         verify(ownerApplicationRepository, never()).findByIdForUpdate(anyLong());
+    }
+
+    @Test
+    void 데모_관리자_목록은_데모_회원_신청만_조회하고_일반_관리자는_전체를_조회한다() {
+        // 데모 관리자에게 일반 회원(소셜 가입 등)의 신청이 안 보이는 것은 의도 — 화면에서 안내 문구로 알림
+        DemoDataProperties properties = new DemoDataProperties(true, "demo-pass-123", null, null, null, null, null);
+        OwnerApplicationService demoService = new OwnerApplicationService(ownerApplicationRepository, userRepository,
+                orderRepository, CLOCK, new DemoAdminScope(properties, userRepository, mock(StoreRepository.class)));
+        user(9L, properties.adminUsername(), Role.ADMIN);
+        user(10L, "adm", Role.ADMIN);
+        PageQuery pageQuery = PageQuery.of(0, 20);
+        given(ownerApplicationRepository.findAllByStatusAndUserUsernameIn(any(), any(), any()))
+                .willReturn(new SliceImpl<>(List.of()));
+        given(ownerApplicationRepository.findAllByStatus(any(), any())).willReturn(new SliceImpl<>(List.of()));
+
+        demoService.getApplications(OwnerApplicationStatus.REQUESTED, pageQuery, properties.adminUsername());
+        verify(ownerApplicationRepository).findAllByStatusAndUserUsernameIn(
+                OwnerApplicationStatus.REQUESTED, properties.demoUsernames(), pageQuery.toPageable());
+        verify(ownerApplicationRepository, never()).findAllByStatus(any(), any());
+
+        demoService.getApplications(OwnerApplicationStatus.REQUESTED, pageQuery, "adm");
+        verify(ownerApplicationRepository).findAllByStatus(OwnerApplicationStatus.REQUESTED, pageQuery.toPageable());
     }
 
     @Test
