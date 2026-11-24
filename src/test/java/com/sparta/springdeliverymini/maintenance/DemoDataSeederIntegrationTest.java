@@ -30,10 +30,13 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.time.Clock;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -65,6 +68,8 @@ class DemoDataSeederIntegrationTest {
     @Autowired private SettlementRepository settlementRepository;
     @Autowired private SettlementStatusHistoryRepository settlementStatusHistoryRepository;
     @Autowired private SettlementAggregationFailureRepository settlementAggregationFailureRepository;
+    @Autowired private JdbcTemplate jdbcTemplate;
+    @Autowired private Clock clock;
 
     // 기동 때 한 번 시드되지만 테스트마다 tearDown이 지우므로 다시 만듦 (멱등이라 첫 테스트에서는 그대로)
     @BeforeEach
@@ -188,7 +193,10 @@ class DemoDataSeederIntegrationTest {
         // 시스템 전체 이벤트는 막힘, 매장 미지정 재집계도 막힘
         mockMvc.perform(get("/api/admin/outbox-events").header(HttpHeaders.AUTHORIZATION, bearer))
                 .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.code").value("DEMO_ADMIN_SCOPE"));
+                .andExpect(jsonPath("$.code").value("DEMO_ADMIN_SCOPE"))
+                // 조사를 붙여 만든 "관리을(를)" 같은 문구가 아니라 이유가 담긴 문장 (2026-11-24 배포 확인)
+                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.startsWith("데모 관리자는 Outbox 이벤트를 볼 수 없습니다.")))
+                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("을(를)"))));
         mockMvc.perform(post("/api/admin/settlements/reaggregate").param("date", pendingDate.toString())
                         .header(HttpHeaders.AUTHORIZATION, bearer))
                 .andExpect(status().isForbidden());
@@ -234,5 +242,72 @@ class DemoDataSeederIntegrationTest {
         mockMvc.perform(post("/api/admin/demo-data/reset").header(HttpHeaders.AUTHORIZATION, bearer))
                 .andExpect(status().isTooManyRequests())
                 .andExpect(jsonPath("$.code").value("DEMO_RESET_TOO_FREQUENT"));
+    }
+
+    @Test
+    void 시드_주문은_주문_결제_배달완료_순서이고_지금보다_늦은_시각이_없다() {
+        // 주문 시각이 Auditing 저장 시각(지금)으로 남으면 지난 주문이 결제·배달보다 늦게 주문된 것으로 보였음
+        Integer outOfOrder = jdbcTemplate.queryForObject("""
+                SELECT count(*) FROM orders o JOIN payments p ON p.order_id = o.id
+                WHERE o.created_at >= p.paid_at OR (o.delivered_at IS NOT NULL AND o.delivered_at <= p.paid_at)
+                """, Integer.class);
+        assertThat(outOfOrder).isZero();
+        Integer future = jdbcTemplate.queryForObject(
+                "SELECT count(*) FROM orders WHERE created_at > ? OR delivered_at > ?", Integer.class,
+                LocalDateTime.now(clock).plusSeconds(1), LocalDateTime.now(clock).plusSeconds(1));
+        assertThat(future).isZero();
+        // 결제 전 주문은 결제 없이 주문 시각만 있음
+        assertThat(orderRepository.findAll()).filteredOn(o -> o.getStatus() == OrderStatus.ORDER_REQUEST)
+                .singleElement().satisfies(o -> assertThat(o.getCreatedAt()).isNotNull());
+    }
+
+    @Test
+    void 관리자_정산_기본_날짜는_정산이_있는_가장_최근_날짜다() throws Exception {
+        String bearer = "Bearer " + jwtProvider.createToken("demoadmin", Role.ADMIN);
+        LocalDate latest = settlementRepository.findAll().stream()
+                .map(Settlement::getSettlementDate).max(LocalDate::compareTo).orElseThrow();
+
+        mockMvc.perform(get("/api/admin/settlements/latest-date").header(HttpHeaders.AUTHORIZATION, bearer))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.date").value(latest.toString()));
+
+        // 정산이 하나도 없으면 null → 화면은 어제 날짜로 엶
+        settlementStatusHistoryRepository.deleteAllInBatch();
+        settlementRepository.deleteAllInBatch();
+        mockMvc.perform(get("/api/admin/settlements/latest-date").header(HttpHeaders.AUTHORIZATION, bearer))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.date").isEmpty());
+    }
+
+    @Test
+    void 공개_데모_고객은_사장님_전환을_신청할_수_없다() throws Exception {
+        String bearer = "Bearer " + jwtProvider.createToken("democustomer", Role.CUSTOMER);
+
+        mockMvc.perform(post("/api/owner-applications")
+                        .header(HttpHeaders.AUTHORIZATION, bearer)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"businessName\":\"방문자 가게\"}"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("DEMO_ACCOUNT_PROTECTED"));
+        assertThat(ownerApplicationRepository.count()).isEqualTo(2); // 시드한 승인·대기 신청 그대로
+    }
+
+    @Test
+    void 사장님_매장별_주문은_선택한_매장_주문만이고_다른_사장님은_403() throws Exception {
+        Store snack = storeRepository.findAll().stream().filter(st -> st.getName().equals("데모 분식")).findFirst().orElseThrow();
+        String owner = "Bearer " + jwtProvider.createToken("demoowner", Role.OWNER);
+
+        // 데모 분식: 오늘 2건(수락·주문요청) + 지난 3일 × 1건
+        mockMvc.perform(get("/api/stores/{id}/orders", snack.getId()).param("size", "100")
+                        .header(HttpHeaders.AUTHORIZATION, owner))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(5))
+                .andExpect(jsonPath("$[*].storeName").value(org.hamcrest.Matchers.everyItem(
+                        org.hamcrest.Matchers.is("데모 분식"))));
+
+        User other = userRepository.save(new User("owner-other", "pw", Role.OWNER));
+        mockMvc.perform(get("/api/stores/{id}/orders", snack.getId())
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + jwtProvider.createToken(other.getUsername(), Role.OWNER)))
+                .andExpect(status().isForbidden());
     }
 }

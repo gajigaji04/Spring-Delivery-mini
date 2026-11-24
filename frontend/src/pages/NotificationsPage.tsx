@@ -24,7 +24,8 @@ export default function NotificationsPage() {
   return (
     <section>
       <h1>알림</h1>
-      <p className="muted">알림은 Kafka를 거쳐 만들어지므로 결제 직후에는 아직 없을 수 있습니다.</p>
+      {/* 운영 구성은 Kafka, 무료 데모(prod-free)는 Kafka 없이 서버 안에서 바로 전달 — 어느 쪽이든 결제 저장 뒤 따로 만들어짐 */}
+      <p className="muted">알림은 결제가 저장된 뒤 따로 만들어지므로, 결제 직후 몇 초 동안은 아직 없을 수 있습니다.</p>
       <ErrorMessage error={error ?? actionError} />
       {loading && <DelayedSpinner />}
       {data && (

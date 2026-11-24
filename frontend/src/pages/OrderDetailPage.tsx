@@ -7,6 +7,8 @@ import { DelayedSpinner } from '../components/DelayedSpinner';
 import { ErrorMessage } from '../components/ErrorMessage';
 import { formatDateTime, Money, orderStatusLabel, paymentStatusLabel, StatusBadge } from '../components/format';
 import { useAsync } from '../hooks/useAsync';
+import { usePolling } from '../hooks/usePolling';
+import { isAwaitingStoreUpdate, isCancellable, ORDER_POLL_MS } from '../orders/orderLive';
 import { fakeTossCheckoutPath, openTossCardPayment } from '../payments/tossSdk';
 
 // 결제 응답을 못 받은 채(타임아웃·새로고침) 다시 누르면 같은 키로 보내야 이중 결제가 안 됨
@@ -67,6 +69,10 @@ export default function OrderDetailPage() {
       setBusy(false);
     }
   };
+
+  // 고객: 사장님이 수락·배달완료하면 새로고침 없이 반영 (orders/orderLive — 결제완료·수락 상태에서만 10초마다 다시 조회)
+  //   → 수락된 주문에 취소 버튼이 남아 있는 시간을 줄임. 그 사이 눌러도 서버가 409로 막고 화면을 다시 불러옴(isStaleOrderState)
+  usePolling(isCustomer && order != null && isAwaitingStoreUpdate(order.status) && !busy, ORDER_POLL_MS, reload);
 
   if (loading && !order) return <DelayedSpinner />;
   if (!order) return <ErrorMessage error={error} />;
@@ -150,7 +156,8 @@ export default function OrderDetailPage() {
               })
             }
           >
-            {tossConfig?.mode === 'FAKE' ? '가짜 결제창으로 결제 (시연)' : '토스페이먼츠로 결제 (테스트)'}
+            {/* 가짜 PG 모드는 실제 토스 결제창이 아님 → '토스 결제창'으로 오해하지 않도록 '데모 결제 승인'으로 표시 */}
+            {tossConfig?.mode === 'FAKE' ? '데모 결제 승인 (실제 결제 없음)' : '토스페이먼츠로 결제 (테스트)'}
           </button>
         )}
         {isCustomer && order.status === 'ORDER_REQUEST' && mockPaymentEnabled && (
@@ -164,7 +171,7 @@ export default function OrderDetailPage() {
           </button>
         )}
         {/* 취소는 주문수락 전까지만 (이후는 409, 배달완료 뒤에는 관리자 환불) */}
-        {isCustomer && (order.status === 'ORDER_REQUEST' || order.status === 'PAYMENT_COMPLETED') && (
+        {isCustomer && isCancellable(order.status) && (
           <button type="button" className="btn btn--danger" disabled={busy} onClick={() => run(() => orderApi.cancel(order.id))}>
             주문 취소
           </button>

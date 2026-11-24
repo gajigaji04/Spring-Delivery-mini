@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { DEMO_LABEL, loadDemoAccounts, type DemoAccount } from '../auth/demoAccounts';
+import { postLoginPath } from '../auth/postLoginPath';
 import { AuthShell } from '../components/AuthShell';
 import { BootScreen } from '../components/BootScreen';
 import { ErrorMessage } from '../components/ErrorMessage';
@@ -22,16 +23,17 @@ export default function LoginPage() {
 
   if (status === 'loading') return <BootScreen />;
   // 이미 로그인 상태면 역할 화면으로 (뒤로 가기로 로그인 화면에 돌아온 경우)
-  if (status === 'authenticated' && me && !submitting) return <Navigate to={from ?? ROLE_HOME[me.role]} replace />;
+  if (status === 'authenticated' && me && !submitting) return <Navigate to={postLoginPath(from, me.role, ROLE_HOME)} replace />;
 
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
     setError(null);
     try {
-      // 역할은 로그인 직후 받은 /me(DB 기준)로 판단 → 막혀 있던 화면이 있으면 그리로, 없으면 역할별 첫 화면
+      // 역할은 로그인 직후 받은 /me(DB 기준)로 판단 → 막혀 있던 화면이 이 역할에 맞으면 그리로, 아니면 역할별 첫 화면
+      // (예: 고객 화면에서 로그아웃 후 관리자로 로그인하면 고객 화면이 아니라 관리자 화면)
       const info = await login(username.trim(), password);
-      navigate(from ?? ROLE_HOME[info.role], { replace: true });
+      navigate(postLoginPath(from, info.role, ROLE_HOME), { replace: true });
     } catch (err) {
       setError(err);
       setSubmitting(false);
@@ -51,7 +53,7 @@ export default function LoginPage() {
     setSubmitting(true);
     try {
       const info = await demoAdminLogin();
-      navigate(from ?? ROLE_HOME[info.role], { replace: true });
+      navigate(postLoginPath(from, info.role, ROLE_HOME), { replace: true });
     } catch (err) {
       setError(err);
       setSubmitting(false);

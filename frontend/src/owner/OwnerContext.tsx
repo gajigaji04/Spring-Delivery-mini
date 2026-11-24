@@ -5,6 +5,7 @@ import { useAuth } from '../auth/AuthContext';
 import { won } from '../components/format';
 import { useToast } from '../components/Toast';
 import type { StreamStatus } from './orderStreamController';
+import { effectiveStoreId, ordersOfStore } from './derive';
 import { disableSound, enableSound, playNewOrderSound, soundSupported } from './sound';
 import { useOrderStream } from './useOrderStream';
 
@@ -13,8 +14,9 @@ import { useOrderStream } from './useOrderStream';
  * 헤더(매장 전환·주문 배지)와 홈·주문 화면이 같은 데이터를 쓰므로 한 곳에서 받는다
  */
 
-// 주문 목록 API는 id 오름차순만 지원 → 최신 주문을 보려면 끝까지 받아야 함.
-// keyset(afterId)이라 페이지가 늘어도 각 요청 시간은 일정. 상한을 넘으면 화면에 알림 (백엔드 후보: 최신순·기간 필터)
+// 선택 매장의 주문만 매장별 주문 API(GET /api/stores/{id}/orders — 서버가 본인 매장인지 확인, 아니면 403)로 받음 (2026-11-24)
+//   이전에는 내 모든 매장 주문(GET /api/orders)을 받아 화면에서 걸렀음 → 다른 매장 주문이 섞여 보일 수 있다는 배포 확인 결과로 서버 범위로 좁힘
+// 목록 API는 id 오름차순만 지원 → 최신 주문을 보려면 끝까지 받아야 함. 상한을 넘으면 화면에 알림 (백엔드 후보: 최신순·기간 필터)
 const PAGE_SIZE = 100;
 const MAX_PAGES = 50;
 const STORE_KEY = 'owner:selectedStoreId';
@@ -65,14 +67,13 @@ function saveStore(id: number): void {
   }
 }
 
-async function fetchAllOrders(): Promise<{ orders: Order[]; truncated: boolean }> {
+async function fetchStoreOrders(storeId: number | null): Promise<{ orders: Order[]; truncated: boolean }> {
   const all: Order[] = [];
-  let afterId: number | null = null;
-  for (let i = 0; i < MAX_PAGES; i++) {
-    const page = await orderApi.list(afterId, PAGE_SIZE);
-    all.push(...page.items);
-    if (!page.hasNext || page.nextAfterId === null) return { orders: all, truncated: false };
-    afterId = page.nextAfterId;
+  if (storeId == null) return { orders: all, truncated: false };
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const result = await storeApi.orders(storeId, page, PAGE_SIZE);
+    all.push(...result.items);
+    if (!result.hasNext) return { orders: all, truncated: false };
   }
   return { orders: all, truncated: true };
 }
@@ -92,6 +93,9 @@ export function OwnerProvider({ children }: { children: ReactNode }) {
   const [loadedAt, setLoadedAt] = useState<Date | null>(null);
   const [busyId, setBusyId] = useState<number | null>(null);
   const latest = useRef(0);
+  const myStoreIds = useMemo(() => (storeKey ? storeKey.split(',').map(Number) : []), [storeKey]);
+  // 매장을 바꾸면 그 매장 주문을 다시 받음 (reload가 이 값에 의존)
+  const targetStoreId = effectiveStoreId(myStoreIds, selectedId);
 
   const reload = useCallback(async () => {
     if (!isOwner) return false;
@@ -100,8 +104,10 @@ export function OwnerProvider({ children }: { children: ReactNode }) {
     setLoading(true);
     setError(null);
     try {
-      const ids = storeKey ? storeKey.split(',').map(Number) : [];
-      const [storeList, result] = await Promise.all([Promise.all(ids.map((id) => storeApi.get(id))), fetchAllOrders()]);
+      const [storeList, result] = await Promise.all([
+        Promise.all(myStoreIds.map((id) => storeApi.get(id))),
+        fetchStoreOrders(targetStoreId),
+      ]);
       if (seq !== latest.current) return false;
       setStores(storeList);
       setAllOrders(result.orders);
@@ -114,7 +120,7 @@ export function OwnerProvider({ children }: { children: ReactNode }) {
     } finally {
       if (seq === latest.current) setLoading(false);
     }
-  }, [isOwner, storeKey]);
+  }, [isOwner, myStoreIds, targetStoreId]);
 
   useEffect(() => {
     if (!isOwner) {
@@ -165,7 +171,8 @@ export function OwnerProvider({ children }: { children: ReactNode }) {
   }, [soundOn, notify]);
   const soundAvailable = useMemo(soundSupported, []);
 
-  const store = stores.find((s) => s.id === selectedId) ?? stores[0] ?? null;
+  // 주문을 받은 매장과 같은 기준(effectiveStoreId)으로 고름 → 화면의 매장 이름과 주문 목록이 어긋나지 않음
+  const store = stores.find((s) => s.id === targetStoreId) ?? null;
 
   const selectStore = useCallback(
     (id: number) => {
@@ -177,10 +184,7 @@ export function OwnerProvider({ children }: { children: ReactNode }) {
     [stores, notify],
   );
 
-  const orders = useMemo(
-    () => (store ? allOrders.filter((o) => o.storeId === store.id).sort((a, b) => b.id - a.id) : []),
-    [allOrders, store],
-  );
+  const orders = useMemo(() => ordersOfStore(allOrders, store?.id ?? null), [allOrders, store]);
 
   const changeStatus = useCallback(
     async (order: Order, next: Transition) => {

@@ -5,6 +5,7 @@ import type { Payment } from '../api/types';
 import { DelayedSpinner } from '../components/DelayedSpinner';
 import { ErrorMessage } from '../components/ErrorMessage';
 import { formatDateTime, Money } from '../components/format';
+import { useAsync } from '../hooks/useAsync';
 import { confirmWithRetry, isRetryableConfirmError, parseSuccessParams } from '../payments/tossConfirm';
 
 type State = { status: 'pending' } | { status: 'done'; payment: Payment } | { status: 'error'; error: unknown };
@@ -18,6 +19,8 @@ export default function TossSuccessPage() {
   const { search } = useLocation();
   const params = useMemo(() => parseSuccessParams(search), [search]);
   const [state, setState] = useState<State>({ status: 'pending' });
+  // 가짜 PG 모드면 '토스 테스트 결제'가 아니라 데모 결제 승인으로 안내 (실제 결제 연동으로 오해하지 않도록)
+  const { data: tossConfig } = useAsync(() => tossApi.config(), []);
   const started = useRef(false);
 
   const confirm = useCallback(async () => {
@@ -65,7 +68,11 @@ export default function TossSuccessPage() {
         <p>
           <Money value={state.payment.amount} /> · {formatDateTime(state.payment.paidAt)}
         </p>
-        <p className="muted">토스페이먼츠 테스트 결제입니다. 실제로 청구되지 않습니다.</p>
+        <p className="muted">
+          {tossConfig?.mode === 'FAKE'
+            ? '데모 결제 승인입니다. 실제 토스 결제창·청구 없이 승인 흐름만 시연했습니다.'
+            : '토스페이먼츠 테스트 결제입니다. 실제로 청구되지 않습니다.'}
+        </p>
         <Link className="btn" to={`/orders/${params.orderId}`}>
           주문 상세 보기
         </Link>

@@ -48,6 +48,8 @@ public class OwnerApplicationService {
     @Transactional
     public OwnerApplicationResponse apply(String username, String businessName) {
         User user = findUser(username);
+        demoAdminScope.rejectPublicDemoAccount(user,
+                "공개 데모 계정으로는 사장님 전환을 신청할 수 없습니다. 방문자 모두가 함께 쓰는 계정이라 역할이 바뀌면 데모가 깨집니다.");
         if (user.getRole() != Role.CUSTOMER) {
             throw new ApiException(HttpStatus.FORBIDDEN, "고객 계정만 사장님 전환을 신청할 수 있습니다.");
         }

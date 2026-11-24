@@ -8,6 +8,14 @@
 # 필수 환경변수는 prod와 같되 KAFKA_BOOTSTRAP_SERVERS는 필요 없음
 # Redis TLS·비밀번호(Upstash 등)는 Spring Boot 표준 환경변수: SPRING_DATA_REDIS_SSL_ENABLED=true, SPRING_DATA_REDIS_PASSWORD
 spring:
+  # Redis(Upstash) 시간 상한 — 기본(application.yml) 1초는 같은 네트워크의 Redis 기준
+  #   무료 배포는 다른 회사 망의 Upstash에 TLS로 접속하고 0.1 CPU라, 첫 명령에 DNS 조회 + TCP + TLS 핸드셰이크 + 인증이 모두 실린다
+  #   → 깨어난 직후 첫 결제가 1초 안에 연결을 끝내지 못해 503(PAYMENT_UNAVAILABLE), 연결이 맺힌 뒤의 재시도는 성공 (2026-11-24 배포 확인)
+  #   연결 단계 3초·명령 2초로 늘리고, 기동 직후 미리 연결해 둠(config.RedisWarmup). 장애 시 503까지 걸리는 시간만 늘 뿐 동작은 같음
+  data:
+    redis:
+      connect-timeout: 3s
+      timeout: 2s
   datasource:
     hikari:
       # 기본 10 → 5: 무료 DB의 연결 한도 안에 두고, 0.1 CPU 인스턴스에서 동시 처리량도 이 정도면 충분

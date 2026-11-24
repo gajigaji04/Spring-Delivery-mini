@@ -54,16 +54,17 @@ export default function MePage() {
       </dl>
       {notice && <p className="muted" role="status">{notice}</p>}
       {me.demoAccount ? (
-        <p className="muted">공개 데모 계정이라 비밀번호·이메일은 바꿀 수 없어요.</p>
+        // 방문자 모두가 같이 쓰는 계정 — 계정 정보·소셜 연결·역할을 바꾸는 기능은 숨김 (서버도 403 DEMO_ACCOUNT_PROTECTED)
+        <p className="muted">공개 데모 계정이라 비밀번호·이메일 변경, 소셜 계정 연결, 사장님 전환 신청은 할 수 없어요.</p>
       ) : (
         <>
           <EmailSection me={me} />
           <PasswordSection me={me} />
+          {/* 관리자는 소셜 연결 불가 (서버도 403) — 관리자 권한이 소셜 계정 보안에 의존하지 않도록 */}
+          {me.role !== 'ADMIN' && <SocialAccountsSection />}
+          {me.role === 'CUSTOMER' && <OwnerApplicationSection />}
         </>
       )}
-      {/* 관리자는 소셜 연결 불가 (서버도 403) — 관리자 권한이 소셜 계정 보안에 의존하지 않도록 */}
-      {me.role !== 'ADMIN' && <SocialAccountsSection />}
-      {me.role === 'CUSTOMER' && <OwnerApplicationSection />}
     </section>
   );
 }

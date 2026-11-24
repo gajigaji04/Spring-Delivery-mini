@@ -200,6 +200,8 @@ export const adminApi = {
       .data,
   settlements: (date: string, status?: SettlementStatus) =>
     get<AdminSettlement[]>('/api/admin/settlements', { date, status }),
+  /** 정산이 있는 가장 최근 날짜(yyyy-MM-dd) — 없으면 null. 데모 관리자는 데모 매장 기준 */
+  latestSettlementDate: async () => (await get<{ date: string | null }>('/api/admin/settlements/latest-date')).date,
   confirm: async (id: number) =>
     (await request<AdminSettlement>(`/api/admin/settlements/${id}/confirm`, { method: 'PATCH' })).data,
   pay: async (id: number) =>

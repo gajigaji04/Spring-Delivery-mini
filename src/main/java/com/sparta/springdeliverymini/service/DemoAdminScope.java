@@ -66,10 +66,20 @@ public class DemoAdminScope {
         }
     }
 
-    // 데모 관리자에게 열지 않는 기능
-    public void deny(User admin, String feature) {
+    // 데모 관리자에게 열지 않는 기능 — reason은 완성된 안내 문장
+    //   (기능 이름에 "을(를)"을 붙여 만들면 "관리을(를)"처럼 어색해져 호출하는 쪽이 문장 전체를 넘김)
+    public void deny(User admin, String reason) {
         if (isDemoAdmin(admin)) {
-            throw outOfScope("데모 관리자는 " + feature + "을(를) 사용할 수 없습니다.");
+            throw outOfScope(reason);
+        }
+    }
+
+    // 공개 데모 계정(방문자 모두가 같이 쓰는 계정)에 열지 않는 기능 — 소셜 연결·사장님 전환 신청 등
+    // 한 방문자가 소셜 계정을 붙이거나 역할을 바꾸면 다음 방문자의 데모가 깨지므로 서버에서 막음 (화면 숨김은 편의)
+    // reason은 완성된 안내 문장 (deny와 같은 이유)
+    public void rejectPublicDemoAccount(User user, String reason) {
+        if (properties.isPublicDemoAccount(user.getUsername())) {
+            throw new ApiException(HttpStatus.FORBIDDEN, ErrorCode.DEMO_ACCOUNT_PROTECTED, reason);
         }
     }
 

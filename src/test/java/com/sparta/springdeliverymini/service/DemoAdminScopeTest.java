@@ -92,4 +92,24 @@ class DemoAdminScopeTest {
         assertThatCode(() -> disabled.requireUser(demoAdmin, new User("visitor1", "pw", Role.CUSTOMER)))
                 .doesNotThrowAnyException();
     }
+
+    @Test
+    void 공개_데모_계정은_소셜_연결_사장님_신청이_403이고_일반_회원이나_데모가_꺼지면_막지_않는다() {
+        DemoAdminScope scope = new DemoAdminScope(ENABLED, userRepository, storeRepository);
+        DemoAdminScope disabled = new DemoAdminScope(
+                new DemoDataProperties(false, null, null, null, null, null, null), userRepository, storeRepository);
+        User demoCustomer = new User("democustomer", "pw", Role.CUSTOMER);
+
+        assertThatThrownBy(() -> scope.rejectPublicDemoAccount(demoCustomer, "공개 데모 계정에는 소셜 계정을 연결할 수 없습니다."))
+                .isInstanceOf(ApiException.class)
+                .satisfies(e -> {
+                    assertThat(((ApiException) e).getStatus()).isEqualTo(HttpStatus.FORBIDDEN);
+                    assertThat(((ApiException) e).getCode()).isEqualTo(ErrorCode.DEMO_ACCOUNT_PROTECTED);
+                    assertThat(e.getMessage()).isEqualTo("공개 데모 계정에는 소셜 계정을 연결할 수 없습니다.");
+                });
+        assertThatCode(() -> scope.rejectPublicDemoAccount(new User("customer1", "pw", Role.CUSTOMER), "소셜 계정 연결"))
+                .doesNotThrowAnyException();
+        assertThatCode(() -> disabled.rejectPublicDemoAccount(demoCustomer, "소셜 계정 연결"))
+                .doesNotThrowAnyException();
+    }
 }

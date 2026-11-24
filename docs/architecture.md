@@ -316,6 +316,11 @@ src/main/resources
   - 결제: 처리 중 기록을 못 남기면 새 결제는 하지 않고 503(이미 커밋된 결제의 재시도는 DB 기록으로 재전송). 결제 후 완료 기록·실패 후 삭제가 실패하면 결제 결과는 그대로 응답하고 로그·메트릭만 → 이후 재시도는 DB 기록으로 재전송
   - 스케줄러: 락 확인이 안 되면 실행하지 않음 (다음 실행의 catch-up·관리자 재집계로 보충)
   - 명령 타임아웃 1초(`spring.data.redis.timeout`) — Lettuce 기본 60초 동안 요청이 묶이지 않도록
+  - **무료 배포(`prod-free`)는 연결 3초·명령 2초 + 기동 직후 연결 예열**(`config.RedisWarmup`, prod 프로필, 2026-11-24)
+    - 증상: 배포 데모에서 첫 결제만 503 `PAYMENT_UNAVAILABLE`("지금은 결제를 처리할 수 없습니다"), 같은 결제 재시도는 성공
+    - 원인(코드 경로 기준): Lettuce는 첫 명령 때 연결 → 첫 결제가 Upstash까지 DNS·TCP·TLS·인증을 모두 떠안음. 0.1 CPU·다른 망이라 1초 명령 타임아웃을 넘김 → 처리 중 기록(SET NX) 실패 → 결제하지 않고 503. 재시도 때는 연결이 맺혀 있어 성공
+    - 중복·불일치 없음: 503은 결제 트랜잭션 전 단계. 타임아웃된 SET NX가 늦게 실행돼 처리 중 기록이 남아도 같은 키 재시도는 1분간 409, 결제는 DB 제약으로 1건
+    - 예열 실패는 경고 로그만(기동 계속). Render 로그에서 `Redis 연결 예열` 줄과 문의 코드(traceId)의 `결제 멱등성 저장소(Redis) 사용 불가` 경고 예외 종류로 확인
   - **DNS 조회 상한 1초** (`config.RedisClientConfig`, 2026-11-21) — compose에서 Redis 중단 시 503이 5초 넘게 걸리던 원인
     - 원인: Lettuce는 `netty-resolver-dns`가 있으면 Netty 자체 DNS 조회기를 씀. Redis 컨테이너가 멈추면 Docker 내장 DNS가 `redis`를 호스트 DNS로 넘겨 NXDOMAIN까지 약 4초(앱 컨테이너 `getent hosts redis` 3.9초, 정상 18ms). `connect-timeout`(1초)은 TCP 연결에만 걸려 이름 조회에는 적용되지 않음. local jar는 `localhost`라 조회가 없어 1초
     - 조치: Lettuce `ClientResources`의 DNS 조회기를 질의 상한 = `connect-timeout`으로 교체 → 키 있는 결제 503이 3.9~9.5초 → **1.02~1.04초**(compose 실측 3회, `docs/local-verification.md` 2-5)
@@ -518,6 +523,8 @@ docker compose run --rm app --spring.profiles.active=dev,dlt-reprocess --all
 ## 실시간 주문 알림 (SSE, #76)
 
 접속 중인 사장님 화면에 새 주문(결제 완료)·고객 취소(환불)를 바로 보냄. 기존 알림 기록 흐름(#42)의 끝에 붙임
+
+> 고객 화면(사장님 수락·배달완료 반영)은 SSE가 아니라 **조건부 폴링**(2026-11-24, `frontend/README.md` "고객 주문 상태 자동 갱신"). 고객 구독을 따로 열면 무료 배포(0.1 CPU) 연결 수와 레지스트리 범위가 커짐. 취소 가능 여부는 서버 `Order.cancel`이 최종 판단(수락 후 409 `ORDER_NOT_CANCELLABLE`)
 
 ```
 결제 → outbox_events → Kafka → NotificationService.handle (알림 저장 + OwnerOrderNotified 발행)

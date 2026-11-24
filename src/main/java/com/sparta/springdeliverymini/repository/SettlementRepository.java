@@ -11,6 +11,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.time.LocalDate;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -29,6 +30,15 @@ public interface SettlementRepository extends JpaRepository<Settlement, Long>, J
 
     @EntityGraph(attributePaths = "store")
     List<Settlement> findAllBySettlementDateAndStatusOrderById(LocalDate settlementDate, SettlementStatus status);
+
+    // 관리자 정산 화면의 기본 날짜 — 정산이 있는 가장 최근 날짜 (없으면 빈 값)
+    // 하루 매장 수만큼만 행이 쌓이는 표라 전체 MAX로 충분 (settlement_date 단독 인덱스는 두지 않음)
+    @Query("SELECT MAX(s.settlementDate) FROM Settlement s")
+    Optional<LocalDate> findLatestSettlementDate();
+
+    // 데모 관리자용 — 데모 매장 정산 중 가장 최근 날짜 (UNIQUE (store_id, settlement_date) 인덱스 사용)
+    @Query("SELECT MAX(s.settlementDate) FROM Settlement s WHERE s.store.id IN :storeIds")
+    Optional<LocalDate> findLatestSettlementDateByStoreIds(@Param("storeIds") Collection<Long> storeIds);
 
     // 사장님 일 정산 기록 목록 — UNIQUE (store_id, settlement_date) 인덱스 사용
     List<Settlement> findAllByStoreIdAndSettlementDateBetweenOrderBySettlementDate(

@@ -43,6 +43,7 @@ public class SocialAccountService {
     private final AuthTokenService authTokenService;
     private final SocialClientRegistrations registrations;
     private final TransactionTemplate transactionTemplate;
+    private final DemoAdminScope demoAdminScope; // 공개 데모 계정은 소셜 연결 불가
     private final SecureRandom random = new SecureRandom();
 
     // 소셜 로그인 — 연결된 회원으로 로그인, 없으면 CUSTOMER 가입 후 로그인
@@ -151,11 +152,14 @@ public class SocialAccountService {
     }
 
     // 관리자는 연결 불가 — 관리자 권한(정산 지급·환불)이 소셜 계정 보안에 의존하지 않도록
-    private static void requireLinkable(User user) {
+    private void requireLinkable(User user) {
         if (user.getRole() == Role.ADMIN) {
             throw new ApiException(HttpStatus.FORBIDDEN, ErrorCode.SOCIAL_LINK_FORBIDDEN,
                     "관리자 계정은 소셜 계정을 연결할 수 없습니다.");
         }
+        // 공개 데모 계정에 한 방문자의 소셜 계정이 붙으면 그 사람이 소셜 로그인으로 데모 계정을 차지하게 됨
+        demoAdminScope.rejectPublicDemoAccount(user,
+                "공개 데모 계정에는 소셜 계정을 연결할 수 없습니다. 방문자 모두가 함께 쓰는 계정이라 한 사람의 소셜 계정이 붙으면 데모가 깨집니다.");
     }
 
     private User findUser(String username) {
