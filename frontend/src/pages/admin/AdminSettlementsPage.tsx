@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { adminApi } from '../../api/endpoints';
 import type { SettlementStatus } from '../../api/types';
 import { DelayedSpinner } from '../../components/DelayedSpinner';
@@ -7,16 +7,29 @@ import { ErrorMessage } from '../../components/ErrorMessage';
 import { Money, settlementStatusLabel, StatusBadge } from '../../components/format';
 import { useAsync } from '../../hooks/useAsync';
 
-/** 어제(Asia/Seoul) — 정산은 D+1 01:10에 전날분이 집계되므로 기본 조회일로 둠 */
+/** 어제(Asia/Seoul) — 정산이 하나도 없거나 최근 날짜 조회가 실패했을 때의 기본값 (정산은 D+1 01:10에 전날분 집계) */
 function yesterdayInSeoul(): string {
   const d = new Date(Date.now() - 24 * 60 * 60 * 1000);
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul' }).format(d); // yyyy-MM-dd
 }
 
 export default function AdminSettlementsPage() {
-  const [date, setDate] = useState(yesterdayInSeoul);
+  // 기본 날짜 = 정산이 있는 가장 최근 날짜 (서버 조회, 하드코딩 없음) → 데이터가 없는 어제로 열려 빈 목록만 보이던 문제
+  //   (배포 데모는 정산이 데모 매장 생성일 이전 3일에만 있음). 정해지기 전(null)에는 목록을 조회하지 않음
+  const [date, setDate] = useState<string | null>(null);
   const [status, setStatus] = useState<SettlementStatus | ''>('');
-  const { data, error, loading, reload } = useAsync(() => adminApi.settlements(date, status || undefined), [date, status]);
+  const { data, error, loading, reload } = useAsync(
+    () => (date == null ? Promise.resolve(undefined) : adminApi.settlements(date, status || undefined)),
+    [date, status],
+  );
+
+  const resetToLatestDate = useCallback(() => {
+    adminApi
+      .latestSettlementDate()
+      .then((latest) => setDate(latest ?? yesterdayInSeoul()))
+      .catch(() => setDate((prev) => prev ?? yesterdayInSeoul()));
+  }, []);
+  useEffect(resetToLatestDate, [resetToLatestDate]);
   const [actionError, setActionError] = useState<unknown>(null);
   const [busyId, setBusyId] = useState<number | null>(null);
 
@@ -36,9 +49,15 @@ export default function AdminSettlementsPage() {
   return (
     <section>
       <h1>정산 관리</h1>
-      <DemoResetPanel onDone={reload} />
+      {/* 초기화하면 정산 날짜가 바뀔 수 있어 최근 날짜를 다시 정함 (같은 날짜면 목록만 다시 조회) */}
+      <DemoResetPanel
+        onDone={() => {
+          resetToLatestDate();
+          reload();
+        }}
+      />
       <div className="row">
-        <input type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
+        <input type="date" value={date ?? ''} onChange={(e) => setDate(e.target.value)} required />
         <select value={status} onChange={(e) => setStatus(e.target.value as SettlementStatus | '')}>
           <option value="">전체 상태</option>
           {Object.entries(settlementStatusLabel).map(([v, label]) => (

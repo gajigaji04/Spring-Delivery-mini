@@ -171,7 +171,9 @@ public class DemoDataSeeder implements ApplicationRunner {
         }
         List<Menu> menus = menuRepository.findAll();
 
-        // 사장님 화면에 상태별 주문이 보이도록: 배달완료 · 수락 · 결제완료(수락 대기) · 주문요청(결제 전)
+        // 사장님 화면에 상태별 주문이 보이도록: 배달완료 · 수락(배달 중) · 결제완료(수락 대기) · 주문요청(결제 전)
+        //   → 고객은 결제(주문요청)·취소(결제완료)를, 사장님은 수락(결제완료)·배달완료(수락)를 바로 해 볼 수 있음
+        //   배달완료 주문은 90분 전 결제 → 50분 전 배달완료 (지금보다 늦은 시각이 생기지 않도록)
         DeliveryAddress address = new DeliveryAddress("06236", "서울 강남구 테헤란로 123", "데모빌딩 4층");
         placeOrder(customer, chicken, address, menus, Map.of("후라이드치킨", 1, "콜라 1.25L", 2),
                 OrderStatus.DELIVERY_COMPLETED, now.minusMinutes(90));
@@ -315,27 +317,34 @@ public class DemoDataSeeder implements ApplicationRunner {
         }
     }
 
+    // at: 결제 시각 (결제 전 주문이면 주문 시각). 시간 순서 = 주문(at-2분) → 결제(at) → 수락 → 배달완료(at+40분)
     private void placeOrder(User customer, Store store, DeliveryAddress address, List<Menu> menus,
-                            Map<String, Integer> items, OrderStatus target, LocalDateTime paidAt) {
+                            Map<String, Integer> items, OrderStatus target, LocalDateTime at) {
         Order order = new Order(customer, store, address, "데모 주문입니다", OrderStatus.ORDER_REQUEST);
         items.forEach((name, quantity) -> order.addItem(menus.stream()
                 .filter(m -> m.getName().equals(name) && m.getStore() == store)
                 .findFirst()
                 .orElseThrow(), quantity));
-        orderRepository.save(order);
+        orderRepository.saveAndFlush(order);
+        // 주문 시각(created_at)은 Auditing이 저장 시각(= 지금)으로 채우고 엔티티로는 바꿀 수 없음(updatable = false)
+        //   → 그대로 두면 지난 주문이 "결제·배달보다 늦게 주문"된 것으로 보임. 시드 주문만 SQL로 결제 2분 전으로 맞춤
+        //   (주문 행은 결제·정산 기록이 아니므로 불변 규칙 대상이 아님. 이후 엔티티 UPDATE에는 created_at이 빠져 유지됨)
+        LocalDateTime orderedAt = target == OrderStatus.ORDER_REQUEST ? at : at.minusMinutes(2);
+        jdbcTemplate.update("UPDATE orders SET created_at = :orderedAt, updated_at = :orderedAt WHERE id = :id",
+                new MapSqlParameterSource().addValue("orderedAt", orderedAt).addValue("id", order.getId()));
         if (target == OrderStatus.ORDER_REQUEST) {
             return;
         }
 
         order.pay();
         paymentRepository.save(new Payment(order, order.getTotalPrice(),
-                store.effectiveFeeRate(feeProperties.rate()), PaymentMethod.CARD, paidAt));
+                store.effectiveFeeRate(feeProperties.rate()), PaymentMethod.CARD, at));
         if (target == OrderStatus.PAYMENT_COMPLETED) {
             return;
         }
         order.accept();
         if (target == OrderStatus.DELIVERY_COMPLETED) {
-            order.complete(paidAt.plusMinutes(40));
+            order.complete(at.plusMinutes(40));
         }
     }
 

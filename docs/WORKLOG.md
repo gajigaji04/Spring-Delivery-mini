@@ -25,6 +25,16 @@ CLAUDE.md에서 옮긴 진행 상황·다음 작업·남은 후속 기록(2026-1
   - `.env.example`·`.env` 끝에 데모 데이터·메일(Brevo) 변수 블록 추가(모두 주석, `.env`에는 생성한 데모 비밀번호 기록). 문서 `docs/operations.md` 9-6, README 환경변수 표
   - 사용자 할 일: Render `DEMO_DATA_ENABLED=true`·`DEMO_PASSWORD`·`DEMO_ADMIN_PASSWORD` → 재배포 → 로그 `데모 데이터 생성 완료` → Vercel `VITE_DEMO_ACCOUNTS` 재배포
 
+- 2026-11-24 **배포 데모 핫픽스** (main 위, 미커밋 — 사용자 브라우저 점검 결과 반영)
+  - 2-1 첫 결제 503: Upstash 첫 연결(DNS·TCP·TLS·인증)이 1초 명령 타임아웃을 넘긴 것으로 판단(코드 경로 기준, Render 로그로 확정 필요) → `prod-free` Redis 연결 3초·명령 2초, `config.RedisWarmup`(prod, 기동 직후 연결). 결제 전 단계 503이라 중복·불일치 없음
+  - 2-2 시드 주문 시각: `created_at`이 Auditing 저장 시각(지금)이라 결제·배달보다 늦었음 → 시드만 SQL로 결제 2분 전으로. **배포 DB는 재배포 후 "데모 데이터 초기화" 1번 필요**
+  - 2-3 고객 주문 상태: 결제완료·수락 상태일 때 10초 폴링(`usePolling`, 숨김 탭 제외), 취소는 서버 409가 최종
+  - 2-4 장바구니 회원별 localStorage(`cart:v1:{id}`) / 2-5 `GET /api/admin/settlements/latest-date` / 2-6 로그인 후 역할에 맞는 이전 화면만(`postLoginPath`)
+  - 2-7 공개 데모 계정 소셜 연결·사장님 전환 신청 403 `DEMO_ACCOUNT_PROTECTED`(화면도 숨김) / 2-8 사장님 주문을 선택 매장 API(`/api/stores/{id}/orders`)로
+  - 2-9 가짜 PG 화면 "데모 결제 승인" 표기 / 2-10 알림 문구에서 Kafka 제거 / 2-11 데모 403 메시지를 완성 문장으로(`"관리을(를)"` 제거)
+  - 3-1 조사(코드 변경 없음): 관리자 API는 **부분 환불·전액 환불(`/api/admin/payments/{id}/refunds`·`/refund`), 수수료율(`PUT·DELETE /api/admin/stores/{id}/fee-rate`), 재집계(`POST /api/admin/settlements/reaggregate`·`GET .../aggregation-failures`)는 있고 프론트 미연결**. **관리자 결제 목록 API는 없음**(환불할 결제 id를 화면에서 찾을 방법이 없음) → 후속 이슈 후보
+  - 3-2 조사: Actuator는 Render에서만(`/actuator/health`만 공개, 상세 숨김). Vercel은 `/api`·`/oauth2`·`/login/oauth2`만 프록시 → `/actuator/*`는 SPA 200(의도). 프록시 불필요
+
 ## 진행 상황 (#78 머지 완료(PR #82) / 소셜 로그인 + 포트폴리오 보강 커밋 완료(`60e0136`)·푸시·PR 전 — 브랜치 `feat/79-social-login`, 2026-11-22)
 - 완료: 매장·메뉴·주문, 결제(수수료), 일 정산 집계·확정·지급, 취소·환불·이월(#30), 매장별 수수료율(#32),
   사장님 일 정산 기록 조회(#34), CI·개발 환경(#37), 관측성·API 문서화(#38),
@@ -177,6 +187,7 @@ CLAUDE.md에서 옮긴 진행 상황·다음 작업·남은 후속 기록(2026-1
   2. 주소·결제 예외 처리 **#77** (머지 완료 PR #81)(1~1.5일): 주소 우편번호·도로명·상세 분리(다음 우편번호, V18), 결제 오류 코드 정리·화면 문구
   3. 토스페이먼츠 테스트 모드 **#78** (머지 완료 PR #82 — 부분 환불·가짜 PG·Redis DNS 수정 포함)(2~3일): **공식 문서 공개 테스트 키**, 서버 승인 시 금액을 주문 총액과 대조, 결제 키 저장(V20 — V19는 배달 요청사항에 사용), 취소 연동
   4. 소셜 로그인 (브랜치 `feat/79-social-login`, 구현·자동 테스트 완료·미커밋, 실제 공급자 확인 대기)(2.5~4일): **카카오 + 구글**(공급자 2개 이상 구조), 성공 시 기존 Refresh 쿠키 발급, 소셜 계정 연결 테이블(V22), 신규는 CUSTOMER. 키는 사용자가 발급해 `.env`에
+- **배포 데모 핫픽스 후속 (2026-11-24)**: ① 관리자 결제 목록 API + 화면(부분 환불·전액 환불 연결) ② 관리자 화면 수수료율·재집계·집계 실패 기록 연결(API는 있음) ③ 고객 주문 실시간(SSE) 필요 시 다중 인스턴스 구조와 함께 검토(현재 폴링) ④ Vercel `/actuator/*`를 404로 돌릴지(현재 SPA 200, 기능 영향 없음)
 - 개선 후보: DLT 재처리 CLI 강제 종료 시 남는 락 `lock:dlt-reprocess`(TTL 30분, 종료 훅 해제 또는 짧은 TTL + 연장, `docs/kafka-outbox.md` 7-3)
 - 그 밖: Alertmanager 연동, Redis 고가용성, 이벤트 테이블 파티셔닝(대용량 시),
   ~~부분 환불~~(#78 브랜치, V21 — 환불 기록 1:N로 해결, 주문-결제 @ManyToOne 전환은 재결제가 필요할 때), 주간·월간 지급, 외부 연동(실제 알림 발송 채널·송금)은 마지막

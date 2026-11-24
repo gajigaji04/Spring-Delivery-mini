@@ -236,3 +236,18 @@ export function settlementsCsv(rows: Settlement[]): string {
 export function formatPaidDate(serverTime: string): string {
   return serverTime.slice(0, 10).replaceAll('-', '.');
 }
+
+/**
+ * 조회할 매장 — 저장된 선택이 내 매장이면 그것, 아니면 첫 매장 (매장이 없으면 null)
+ * 데모 초기화 등으로 저장된 매장 id가 사라져도 남의 매장 id로 조회하지 않음
+ */
+export function effectiveStoreId(myStoreIds: number[], selectedId: number | null): number | null {
+  if (selectedId != null && myStoreIds.includes(selectedId)) return selectedId;
+  return myStoreIds[0] ?? null;
+}
+
+/** 선택 매장의 주문만, 최신순 — 서버도 매장별 API로 거르지만 매장 전환 직후 이전 매장 응답이 섞여 보이지 않도록 한 번 더 */
+export function ordersOfStore(orders: Order[], storeId: number | null): Order[] {
+  if (storeId == null) return [];
+  return orders.filter((o) => o.storeId === storeId).sort((a, b) => b.id - a.id);
+}

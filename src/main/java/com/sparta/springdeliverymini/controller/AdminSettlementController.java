@@ -1,6 +1,7 @@
 package com.sparta.springdeliverymini.controller;
 
 import lombok.RequiredArgsConstructor;
+import com.sparta.springdeliverymini.dto.LatestSettlementDateResponse;
 import com.sparta.springdeliverymini.dto.SettlementAggregationFailureResponse;
 import com.sparta.springdeliverymini.dto.SettlementReaggregationResponse;
 import com.sparta.springdeliverymini.dto.SettlementResponse;
@@ -32,6 +33,14 @@ public class AdminSettlementController {
             @RequestParam(required = false) SettlementStatus status,
             Authentication authentication) {
         return adminSettlementService.getSettlements(date, status, authentication.getName());
+    }
+
+    // 정산이 있는 가장 최근 날짜 — 관리자 화면의 기본 조회 날짜 (데모 관리자는 데모 매장 기준)
+    // 예) GET /api/admin/settlements/latest-date → {"date":"2026-11-22"} / 정산이 없으면 {"date":null}
+    @GetMapping("/latest-date")
+    public LatestSettlementDateResponse getLatestSettlementDate(Authentication authentication) {
+        return new LatestSettlementDateResponse(
+                adminSettlementService.getLatestSettlementDate(authentication.getName()).orElse(null));
     }
 
     // 정산 확정 — PENDING → CONFIRMED (요청 본문 없음, 확정 시각은 서버 시각)

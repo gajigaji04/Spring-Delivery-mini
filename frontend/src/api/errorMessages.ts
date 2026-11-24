@@ -45,7 +45,7 @@ const CODE_MESSAGES: Record<string, string> = {
   INVALID_CURRENT_PASSWORD: '현재 비밀번호가 올바르지 않습니다.',
   PASSWORD_RESET_TOKEN_INVALID: '링크가 만료되었거나 이미 사용되었습니다. 비밀번호 찾기를 다시 요청해 주세요.',
   EMAIL_ALREADY_USED: '이미 다른 계정에서 사용 중인 이메일입니다.',
-  DEMO_ACCOUNT_PROTECTED: '공개 데모 계정은 비밀번호·이메일을 바꿀 수 없습니다.',
+  DEMO_ACCOUNT_PROTECTED: '공개 데모 계정에서는 쓸 수 없는 기능이에요. (비밀번호·이메일 변경, 소셜 연결, 사장님 전환 신청)',
   PASSWORD_RESET_UNAVAILABLE: '지금은 비밀번호 찾기를 사용할 수 없습니다. 관리자에게 문의해 주세요.',
 
   // 이메일 인증 (V24)

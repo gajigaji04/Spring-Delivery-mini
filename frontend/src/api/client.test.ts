@@ -87,6 +87,12 @@ describe('API 클라이언트 인증 처리', () => {
     const page = await getPage<{ id: number }>('/api/orders');
     expect(page).toEqual({ items: [{ id: 1 }], hasNext: true, nextAfterId: 1 });
   });
+
+  it('본문 없는 202 응답은 오류 없이 data가 undefined다', async () => {
+    fetchMock.mockResolvedValue(new Response(null, { status: 202 }));
+    const res = await request('/api/users/password-reset', { method: 'POST', body: { email: 'a@b.c' }, auth: false });
+    expect(res.data).toBeUndefined();
+  });
 });
 
 describe('API 클라이언트 서버 깨우기', () => {

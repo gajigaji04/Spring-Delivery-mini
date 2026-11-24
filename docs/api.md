@@ -153,6 +153,7 @@
 | 알림 읽음 처리 | PATCH | `/api/notifications/{id}/read` | O | 로그인 사용자 (본인 알림) | 204 |
 | 사장님 실시간 주문 알림 (SSE) | GET | `/api/owner/order-events?storeId=` | O | OWNER (본인 매장) | 200 `text/event-stream` |
 | 정산 목록 조회 (관리자) | GET | `/api/admin/settlements?date=&status=` | O | ADMIN | 200 |
+| 정산이 있는 가장 최근 날짜 (관리자) | GET | `/api/admin/settlements/latest-date` | O | ADMIN | 200 |
 | 정산 확정 (관리자) | PATCH | `/api/admin/settlements/{id}/confirm` | O | ADMIN | 200 |
 | 정산 지급 (관리자) | PATCH | `/api/admin/settlements/{id}/pay` | O | ADMIN | 200 |
 | 정산 상태 변경 이력 (관리자) | GET | `/api/admin/settlements/{id}/histories` | O | ADMIN | 200 |
@@ -355,7 +356,7 @@ Response `200 OK` (`MyInfoResponse`, #62)
 |---|---|
 | 400 `INVALID_CURRENT_PASSWORD` | 현재 비밀번호가 틀림 (401이 아님 — 토큰 만료로 보고 재발급하지 않도록) |
 | 400 `PASSWORD_RESET_TOKEN_INVALID` | 재설정 링크가 없거나 만료·이미 사용 |
-| 403 `DEMO_ACCOUNT_PROTECTED` | 데모 계정(고객·사장님·관리자)의 비밀번호·이메일 변경 |
+| 403 `DEMO_ACCOUNT_PROTECTED` | 데모 계정(고객·사장님·관리자)의 비밀번호·이메일 변경, 소셜 계정 연결(`.../social-accounts/{provider}/link`·콜백), 사장님 전환 신청(`POST /api/owner-applications`) (2026-11-24) |
 | 400 `EMAIL_VERIFICATION_TOKEN_INVALID` | 인증 링크가 없거나 만료·이미 사용 (V24) |
 | 409 `EMAIL_ALREADY_USED` | 다른 회원이 쓰는 이메일 (등록 요청·인증 시점 모두) |
 | 429 `EMAIL_VERIFICATION_TOO_FREQUENT` | 1분 안에 인증 메일 재요청 (V24) |
@@ -1077,6 +1078,17 @@ Response `200 OK` — 정산 응답 배열 (id 순), 없으면 빈 배열
 | 400 | `date` 누락·형식 오류, `status`가 정의되지 않은 값 |
 | 401 | 토큰 없음 |
 | 403 | ADMIN이 아님 |
+
+### 정산이 있는 가장 최근 날짜 `GET /api/admin/settlements/latest-date` (2026-11-24)
+관리자 정산 화면의 기본 조회 날짜. 날짜를 하드코딩하지 않고 데이터가 있는 날로 엶 (어제로 열면 정산이 없는 날일 수 있음)
+
+Response `200 OK`
+```json
+{ "date": "2026-11-22" }
+```
+- 정산이 하나도 없으면 `{ "date": null }` → 화면은 어제(Asia/Seoul)로 엶
+- 데모 관리자는 데모 매장 정산 기준 (다른 매장 날짜로 열리면 빈 목록이 보이므로)
+- 오류: 401 토큰 없음 / 403 ADMIN이 아님
 
 ### 정산 확정 `PATCH /api/admin/settlements/{id}/confirm`
 `PENDING` → `CONFIRMED`, 확정 시각(`confirmedAt`)을 서버 시각으로 기록. 요청 본문 없음

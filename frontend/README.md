@@ -21,10 +21,11 @@ npm run build             # tsc 타입 검사 + 프로덕션 빌드
 | `src/api/errorMessages.ts` | 오류 코드(`code`)별 사용자 문구(`userMessage`) — `ErrorMessage`·토스트가 사용. 매핑 없으면 서버 `message` (#77) |
 | `src/address/` | 다음 우편번호 스크립트 지연 로딩(`postcode.ts`, '주소 검색'을 누를 때 처음 1번), 주소 검증(`validateAddress.ts`, 서버 `DeliveryAddress`와 같은 규칙) (#77) |
 | `src/auth/` | Access Token 메모리 보관(`tokenStore`), 앱 시작 시 refresh 1번, 역할별 화면 가드(`RequireRole`, 최종 판단은 서버 403) |
-| `src/cart/` | 장바구니 — 한 매장 메뉴만, 같은 메뉴는 합침 (서버 400 규칙과 동일) |
+| `src/cart/` | 장바구니 — 한 매장 메뉴만, 같은 메뉴는 합침 (서버 400 규칙과 동일). 회원별 `localStorage`(`cart:v1:{회원 id}`, `cartStorage.ts`)에 저장해 새로고침에도 유지 — 계정을 바꾸면 그 회원 것만 보이고, 로그아웃하면 화면에서만 비움(같은 회원 재로그인 시 복원), 주문 완료·비우기면 키 삭제 |
+| `src/orders/` · `src/hooks/usePolling.ts` | 고객 주문 상태 자동 갱신 규칙(`orderLive.ts`) — 아래 "고객 주문 상태 자동 갱신" |
 | `src/routes/pages.ts` | 화면별 지연 로딩 + 미리 받기(`preloadPage`, `preloadWhenIdle`) |
 | `src/components/` | `Layout`(헤더 알약 메뉴·매장 전환·계정 메뉴, 960px 이하 하단 탭바), `AuthShell`(로그인·가입 화면), `BootScreen`, `Toast`, `Icons`(인라인 SVG), `PrefetchLink`, `DelayedSpinner`(0.4초 지연), `Money`·`won`(₩, tabular-nums), `ErrorMessage`(문의 코드 = traceId), `Pager`, `AddressFields`(우편번호·도로명은 검색 결과로, 상세만 입력) |
-| `src/owner/` | `OwnerContext`(내 매장·선택 매장·주문 목록·수락/배달 완료), `useStoreSettlements`(선택 매장 최근 n일 정산), `derive.ts`(오늘 집계·14일 매출·주간 묶음·CSV — 순수 함수, 테스트 대상) |
+| `src/owner/` | `OwnerContext`(내 매장·선택 매장·주문 목록·수락/배달 완료 — 주문은 **선택 매장만** `GET /api/stores/{id}/orders`로 받음(서버가 본인 매장 확인, 2026-11-24), 매장을 바꾸면 다시 조회), `useStoreSettlements`(선택 매장 최근 n일 정산), `derive.ts`(오늘 집계·14일 매출·주간 묶음·CSV — 순수 함수, 테스트 대상) |
 | `src/pages/` | 랜딩(`/`, 사장님 소개) / 고객: 매장(`/stores`)·매장 상세·장바구니·주문(keyset)·주문 상세(결제·취소)·결제 내역·사장님 전환 신청(내 정보) / 사장님: 홈(`/owner`)·주문 관리(`/owner/orders`)·정산(`/owner/settlements`)·매장 정보·메뉴 등록(`/owner/stores`) / 관리자: 정산 확정·지급, 사장님 전환 승인·거절, Outbox 재발행 / 공통: 로그인·가입(항상 고객)·알림·내 정보 |
 | `src/styles/` | `tokens.css`(디자인 토큰), `base.css`(공통 컴포넌트 + 고객·관리자 화면이 쓰는 기존 클래스), `owner.css`(사장님 화면·로그인), `fonts.ts`(웹폰트, 첫 렌더 뒤 로드) |
 
@@ -87,13 +88,23 @@ npm run build             # tsc 타입 검사 + 프로덕션 빌드
 - 이벤트 본문은 토스트 문구에만 쓰고, 화면 데이터는 항상 주문 목록 API 결과
 - **알림 소리**: 브라우저 자동 재생 정책상 사용자가 클릭하기 전에는 소리를 낼 수 없음 → '알림 소리 켜기' 클릭 안에서 `AudioContext`를 만들고 resume(확인용으로 한 번 울림, 막히면 오류 토스트). 음원 파일 없이 Web Audio로 두 음 생성. 새로고침하면 다시 켜야 함(저장해도 클릭 전에는 소리가 안 나므로 저장하지 않음)
 
+## 고객 주문 상태 자동 갱신 (2026-11-24)
+- 사장님이 수락·배달완료해도 고객 화면은 새로고침 전까지 그대로였음 → 수락된(배달 중) 주문에 취소 버튼이 남음
+- 주문 상세·주문 목록(고객)에서 **사장님이 바꿀 수 있는 상태(결제완료·수락)일 때만 10초마다 다시 조회**. 탭이 숨겨지면 건너뛰고 돌아오면 바로 조회
+- SSE를 쓰지 않은 이유: `docs/architecture.md` 실시간 주문 알림 장 참고 (고객 구독 추가 시 연결 수·범위 증가)
+- 취소 버튼은 주문요청·결제완료에서만(`isCancellable`). 갱신 전 눌러도 서버가 409 `ORDER_NOT_CANCELLABLE` → 화면을 다시 불러옴
+
+## 로그인 후 이동 (2026-11-24)
+- 로그인 전에 막혔던 화면(`state.from`)이 **그 역할로 들어갈 수 있는 화면일 때만** 돌아감(`auth/postLoginPath.ts`, 규칙은 `App.tsx`의 `RequireRole`과 같게 유지). 아니면 역할 기본 화면(`ROLE_HOME`) — 고객 화면에서 로그아웃 뒤 관리자로 로그인하면 관리자 정산 화면
+- 관리자 정산 화면 기본 날짜는 `GET /api/admin/settlements/latest-date`(정산이 있는 가장 최근 날짜), 없으면 어제
+
 ## 토스페이먼츠 결제 (#78, 테스트 모드)
 - 주문 상세: `GET /api/payments/toss/config`가 `enabled`면 '토스페이먼츠로 결제 (테스트)', 아니면(키 없음·조회 실패) 기존 모의 '카드 결제'
 - 버튼 → `checkout`(금액·주문번호는 서버가 정함) → `payments/tossSdk.ts`가 SDK v2(`js.tosspayments.com/v2/standard`)를 **누를 때 처음 한 번만** 불러 결제창을 엶(리다이렉트 방식)
 - 돌아오는 주소: `/payments/toss/success?order={주문 id}` / `/payments/toss/fail?order=` — 토스가 `orderId`(토스 주문번호)를 따로 붙여서 주문 id는 `order`
 - 성공 화면(`pages/TossSuccessPage`): 서버 승인 요청, `Idempotency-Key` = 토스 주문번호 → 새로 고침해도 승인 한 번. 결과 불명(`PG_RESULT_UNKNOWN`·처리 중·네트워크)은 같은 요청을 1·2·4초 간격 자동 재시도(`payments/tossConfirm.ts`), 그래도 모르면 '다시 확인'만 — **결제창을 다시 여는 버튼은 두지 않음**(새 결제 = 이중 결제 위험)
 - 클라이언트 키도 프론트 빌드 변수가 아니라 서버 API로 받음 → 키는 루트 `.env` 한 곳
-- **가짜 결제창** (`pages/FakeTossCheckoutPage`, `/payments/fake-toss`): 서버가 `TOSS_MODE=fake`면 config의 `mode: 'FAKE'` → 토스 SDK 대신 이 화면으로 이동. 시나리오 버튼(정상·카드 거절·응답 유실·PG 지연·금액 조작·창 닫기)으로 결과를 고르고, 실제 결제창과 같은 successUrl·failUrl 쿼리로 돌아감
+- **가짜 결제창** (`pages/FakeTossCheckoutPage`, `/payments/fake-toss`, 화면 표기는 **"데모 결제 승인"** — 실제 토스 결제창으로 오해하지 않도록, 2026-11-24): 서버가 `TOSS_MODE=fake`면 config의 `mode: 'FAKE'` → 토스 SDK 대신 이 화면으로 이동. 시나리오 버튼(정상·카드 거절·응답 유실·PG 지연·금액 조작·창 닫기)으로 결과를 고르고, 실제 결제창과 같은 successUrl·failUrl 쿼리로 돌아감
 - 결제 상태 `PARTIALLY_REFUNDED`('부분 환불'), 주문 상세에 누적 환불액 표시 (V21). 관리자 부분 환불 화면은 아직 없음(API만)
 
 ## 소셜 로그인 (V22)

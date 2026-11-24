@@ -165,7 +165,10 @@ export async function request<T>(
     throw error;
   }
 
-  const data = res.status === 204 ? (undefined as T) : ((await res.json()) as T);
+  // 본문 없는 성공 응답은 204만이 아님 — 비밀번호 찾기는 본문 없는 202. res.json()은 빈 본문에서 SyntaxError를 던져
+  // ApiError가 아니므로 화면에 "네트워크 오류"로 보임 → 본문을 문자열로 읽고 비어 있으면 undefined
+  const text = res.status === 204 ? '' : await res.text();
+  const data = (text ? JSON.parse(text) : undefined) as T;
   return { data, headers: res.headers };
 }
 

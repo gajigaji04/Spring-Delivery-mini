@@ -33,6 +33,8 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 // 관리자 정산 관리 — 조회, 확정(PENDING → CONFIRMED), 지급(CONFIRMED → PAID), 누락·실패분 재집계
@@ -72,6 +74,17 @@ public class AdminSettlementService {
         return settlements.stream()
                 .map(settlement -> SettlementResponse.from(settlement, histories.getOrDefault(settlement.getId(), List.of())))
                 .toList();
+    }
+
+    // 정산이 있는 가장 최근 날짜 — 관리자 화면이 날짜를 하드코딩하지 않고 데이터가 있는 날로 열리도록
+    // 데모 관리자는 데모 매장 정산 기준(다른 매장 날짜로 열리면 빈 목록이 보임). 정산이 하나도 없으면 빈 값 → 화면은 어제로
+    public Optional<LocalDate> getLatestSettlementDate(String username) {
+        User admin = validateAdmin(username);
+        if (!demoAdminScope.isDemoAdmin(admin)) {
+            return settlementRepository.findLatestSettlementDate();
+        }
+        Set<Long> storeIds = demoAdminScope.demoStoreIds();
+        return storeIds.isEmpty() ? Optional.empty() : settlementRepository.findLatestSettlementDateByStoreIds(storeIds);
     }
 
     // 정산 1건의 상태 변경 이력 (기록 순) — V11 전에 일어난 전이는 이력이 없음

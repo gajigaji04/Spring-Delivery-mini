@@ -63,8 +63,11 @@ export default function FakeTossCheckoutPage() {
 
   return (
     <section>
-      <h1>가짜 결제창</h1>
-      <p className="notice">토스페이먼츠 서버에 접속하지 않는 시연용 결제창입니다. 실제 돈은 오가지 않습니다.</p>
+      <h1>데모 결제 승인</h1>
+      <p className="notice">
+        실제 토스페이먼츠 결제창이 아닙니다. 토스에 연결하지 않고 카드 인증 → 서버 승인 흐름만 시연하는 화면이며, 실제 돈은 오가지
+        않습니다.
+      </p>
       <p>
         {params.orderName} · <strong><Money value={params.amount} /></strong>
       </p>

@@ -6,11 +6,13 @@ import {
   agoLabel,
   dailySales,
   dateLabel,
+  effectiveStoreId,
   feeRateLabel,
   groupByWeek,
   itemsLabel,
   minutesSince,
   orderTimeLabel,
+  ordersOfStore,
   seoulDate,
   settlementsCsv,
   sumSettlements,
@@ -184,5 +186,22 @@ describe('체험 계정', () => {
       ]).map((a) => a.username),
     ).toEqual(['democustomer', 'demoowner', 'demoadmin']);
     expect(orderDemoAccounts([])).toEqual([]);
+  });
+});
+
+describe('사장님 매장 범위', () => {
+  it('저장된 선택이 내 매장이면 그 매장, 아니면(초기화로 사라진 id·남의 매장) 첫 매장', () => {
+    expect(effectiveStoreId([3, 4], 4)).toBe(4);
+    expect(effectiveStoreId([3, 4], 99)).toBe(3);
+    expect(effectiveStoreId([3, 4], null)).toBe(3);
+    expect(effectiveStoreId([], 3)).toBeNull();
+  });
+
+  it('선택 매장의 주문만 최신순으로 — 다른 매장 주문은 섞이지 않는다', () => {
+    const chicken = { ...order(1, 'PAYMENT_COMPLETED', '2026-11-24T10:00:00'), storeId: 3 };
+    const snack1 = { ...order(2, 'ORDER_ACCEPTED', '2026-11-24T10:05:00'), storeId: 4 };
+    const snack2 = { ...order(5, 'PAYMENT_COMPLETED', '2026-11-24T10:10:00'), storeId: 4 };
+    expect(ordersOfStore([chicken, snack1, snack2], 4).map((o) => o.id)).toEqual([5, 2]);
+    expect(ordersOfStore([chicken, snack1], null)).toEqual([]);
   });
 });

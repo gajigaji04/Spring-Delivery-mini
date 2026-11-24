@@ -83,6 +83,7 @@ public class AdminOutboxService {
             throw new ApiException(HttpStatus.FORBIDDEN, "관리자만 이벤트를 관리할 수 있습니다.");
         }
         // 다른 회원의 주문·결제 내용이 담긴 이벤트 → 데모 관리자는 목록도 보지 않음
-        demoAdminScope.deny(currentUser, "Outbox 이벤트 관리");
+        demoAdminScope.deny(currentUser, "데모 관리자는 Outbox 이벤트를 볼 수 없습니다. "
+                + "Outbox에는 다른 방문자의 주문·결제 정보가 담긴 시스템 전체 이벤트가 있어, 데모 매장 데이터만 다루는 데모 관리자에게는 열지 않습니다.");
     }
 }
