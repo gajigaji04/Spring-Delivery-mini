@@ -58,7 +58,8 @@ npm run build             # tsc 타입 검사 + 프로덕션 빌드
 - 가입 화면에 역할 선택 없음 — 서버가 고객으로만 가입시킴 (`role: OWNER`는 400)
 - 고객이 '내 정보'에서 상호로 신청 → 관리자 '사장님 승인' 화면에서 승인·거절(사유)
 - 승인돼도 지금 Access Token은 `role=CUSTOMER` → '사장님 화면으로 전환' 버튼이 `refresh` 후 `/me`를 다시 받아 OWNER 메뉴로 바뀜
-- 거절 사유 입력은 임시로 `window.prompt` — 디자인(V3)에 관리자 화면·모달이 없어 그대로 둠
+- 거절은 행 아래에 펼쳐지는 사유 입력 폼(필수·255자, "거절 확정"·"취소") — 예전 `window.prompt`는 브라우저가 대화상자를 막으면 창 없이 취소되어 "반응 없음"으로 보였음(2026-11-24). 검사 로직 `src/admin/ownerApplications.ts`
+- 체험 관리자(데모 관리자)로 들어오면 목록 위에 "데모 회원의 신청만 보임" 안내 — 서버가 다른 회원 신청을 목록에서 빼기 때문(`docs/api.md` 배포 데모 체험)
 
 ## 연동 규칙 (docs/api.md "인증 토큰")
 - Access Token은 메모리에만 — localStorage 금지. 새로고침 후 `POST /api/users/refresh`로 복구

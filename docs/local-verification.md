@@ -776,3 +776,14 @@ APP_PORT=8091 NOTIFICATION_SENDER=log docker compose up -d --build app
 
 ### 10-4. 실제 메일 (배포 후, 아직 — 사용자 확인 항목)
 Brevo 키·발신 주소 인증 후 [운영 프로필 9-7](operations.md) 4번 절차. 메일이 스팸함으로 갈 수 있음 (무료 도메인 발신 주소의 DMARC)
+
+### 10-5. 관리자 사장님 전환 신청 화면 (2026-11-24, 통과 — 전체 114클래스 998건 · 프론트 101건)
+- 자동 테스트
+  - `OwnerApplicationServiceTest`: 데모 관리자 목록은 데모 회원 신청만(`findAllByStatusAndUserUsernameIn`), 일반 관리자는 전체(`findAllByStatus`)
+  - `OwnerApplicationSecurityTest`(기존): 거절 사유가 없으면 400
+  - 프론트 `admin/ownerApplications.test.ts`: 거절 사유 검사(빈 값·공백·255자 초과), 데모 관리자 판별(체험 계정 목록의 관리자 아이디)
+- 브라우저 확인 (배포 후, 아직 — 사용자 확인 항목)
+  1. 로그인 화면 "관리자 체험하기" → 사장님 승인 화면 위에 "체험 관리자는 데모 회원의 신청만…" 안내가 보임. 일반 관리자 계정에서는 안 보임
+  2. 승인 대기 `demoapplicant`(데모 떡집) 행에서 거절 → 행 아래 사유 입력 폼이 펼쳐짐. 빈 값으로 "거절 확정" → 요청 없이 안내 문구
+  3. 사유 입력 → 거절 확정 → 목록에서 빠지고 "거절됨" 탭에 처리자·사유 표시. 취소를 누르면 요청 없음
+  4. 끝나면 정산 관리 화면 "데모 데이터 초기화"로 신청을 대기 상태로 되돌림
