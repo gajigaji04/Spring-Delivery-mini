@@ -35,7 +35,7 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
 
     // 내 결제 목록 (#62) — 주문자 기준(결제자 = 주문자), id 오름차순 페이지 (PageQuery.toPageable())
     // 응답에 주문 id·주문 상태가 들어가므로 주문을 같은 쿼리에서 함께 조회(@EntityGraph) → 결제마다 주문을 따로 조회하지 않음
-    // 실행 계획: idx_orders_user_id_id(V12)로 본인 주문 → payments.order_id UNIQUE 인덱스로 결제 → id 정렬
+    // 실행 계획: 고객 주문 인덱스(V12 idx_orders_user_id_id → V25 idx_orders_user_id_created_at_id, 앞부분 user_id)로 본인 주문 → payments.order_id UNIQUE 인덱스로 결제 → id 정렬
     //   결제 테이블에 user_id가 없어 새 인덱스로 정렬까지 해결할 수 없음 (근거는 docs/performance.md 10장)
     @EntityGraph(attributePaths = "order")
     Slice<Payment> findAllByOrderUserId(Long userId, Pageable pageable);

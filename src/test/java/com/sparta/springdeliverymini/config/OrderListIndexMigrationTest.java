@@ -11,8 +11,8 @@ import org.testcontainers.utility.DockerImageName;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-// V12(주문 목록 페이지 조회용 인덱스)가 V11 데이터가 있는 DB에서도 적용되는지,
-// 기존 주문을 건드리지 않는지, 고객별·매장별 주문 조회가 실제로 새 인덱스를 쓸 수 있는지 검증
+// V12(주문 목록 페이지 조회용 인덱스)·V25(최신순 정렬로 교체, #98)가 V11 데이터가 있는 DB에서도 적용되는지,
+// 기존 주문을 건드리지 않는지, 고객별·매장별 주문 조회가 실제로 최신 인덱스를 쓸 수 있는지 검증
 class OrderListIndexMigrationTest {
 
     private static PostgreSQLContainer postgres;
@@ -61,9 +61,16 @@ class OrderListIndexMigrationTest {
     }
 
     @Test
-    void 고객별_매장별_주문_조회용_인덱스가_조건_컬럼과_id_순서로_만들어진다() {
-        assertThat(indexDefinition("idx_orders_user_id_id")).contains("(user_id, id)");
-        assertThat(indexDefinition("idx_orders_store_id_id")).contains("(store_id, id)");
+    void 고객별_매장별_주문_조회용_인덱스가_조건_컬럼_주문_시각_id_순서로_만들어진다() {
+        assertThat(indexDefinition("idx_orders_user_id_created_at_id")).contains("(user_id, created_at, id)");
+        assertThat(indexDefinition("idx_orders_store_id_created_at_id")).contains("(store_id, created_at, id)");
+    }
+
+    @Test
+    void V12의_id_정렬_인덱스는_V25에서_교체되어_남지_않는다() {
+        // 새 인덱스의 앞부분(user_id·store_id)이 같은 역할을 하므로 쓰기마다 갱신하는 인덱스 수는 그대로
+        assertThat(indexDefinition("idx_orders_user_id_id")).isNull();
+        assertThat(indexDefinition("idx_orders_store_id_id")).isNull();
     }
 
     @Test
@@ -81,11 +88,15 @@ class OrderListIndexMigrationTest {
     }
 
     @Test
-    void 주문_페이지_조회는_새_인덱스로_정렬_없이_처리된다() {
-        assertThat(plan("SELECT * FROM orders WHERE user_id = 2 ORDER BY id LIMIT 21"))
-                .contains("idx_orders_user_id_id").doesNotContain("Sort");
-        assertThat(plan("SELECT * FROM orders WHERE store_id = 1 ORDER BY id LIMIT 21"))
-                .contains("idx_orders_store_id_id").doesNotContain("Sort");
+    void 주문_페이지_조회는_최신순이어도_새_인덱스를_거꾸로_읽어_정렬_없이_처리된다() {
+        assertThat(plan("SELECT * FROM orders WHERE user_id = 2 ORDER BY created_at DESC, id DESC LIMIT 21"))
+                .contains("idx_orders_user_id_created_at_id").doesNotContain("Sort");
+        assertThat(plan("SELECT * FROM orders WHERE store_id = 1 ORDER BY created_at DESC, id DESC LIMIT 21"))
+                .contains("idx_orders_store_id_created_at_id").doesNotContain("Sort");
+        // keyset 다음 페이지 조건도 같은 인덱스 범위로
+        assertThat(plan("SELECT * FROM orders WHERE user_id = 2 AND (created_at < now() OR (created_at = now() AND id < 3)) "
+                + "ORDER BY created_at DESC, id DESC LIMIT 21"))
+                .contains("idx_orders_user_id_created_at_id").doesNotContain("Sort");
     }
 
     // 행이 적으면 플래너가 순차 스캔을 고르므로 순차 스캔을 끄고, 이 쿼리에 인덱스를 쓸 수 있는지만 확인

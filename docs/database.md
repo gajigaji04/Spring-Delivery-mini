@@ -32,6 +32,7 @@
 | `V22__add_social_accounts.sql` | 소셜 로그인: `users.password` NOT NULL 해제(소셜 전용 회원은 NULL, 기존 행 변경 없음), `social_accounts`(FK → users, `(provider, provider_user_id)`·`(user_id, provider)` UNIQUE) |
 | `V23__add_user_email_and_password_reset_tokens.sql` | 비밀번호 찾기·변경: `users.email`(NULL 허용, UNIQUE, 소문자 CHECK — 기존 행 변경 없음), `password_reset_tokens`(FK → users, `token_hash` UNIQUE, `(user_id, created_at)` 인덱스), `refresh_tokens.revoke_reason`에 `PASSWORD_CHANGED` 추가, `idx_refresh_tokens_user_active (user_id) WHERE revoked_at IS NULL` |
 | `V24__add_email_verification.sql` | 이메일 인증: `users.email_verified_at`(NULL 허용 — 기존 이메일은 미인증으로 남음, 주소 없이 인증 시각만 있으면 CHECK 위반), `email_verification_tokens`(FK → users, 인증할 `email` 소문자 CHECK, `token_hash` UNIQUE, `(user_id, created_at)` 인덱스) (`EmailVerificationMigrationTest`) |
+| `V25__order_list_newest_first_indexes.sql` | 주문 목록 최신순(#98): `idx_orders_user_id_created_at_id (user_id, created_at, id)`·`idx_orders_store_id_created_at_id (store_id, created_at, id)` 추가, V12의 `idx_orders_user_id_id`·`idx_orders_store_id_id` 제거(앞부분이 같은 역할 — 쓰기마다 갱신하는 인덱스 수 그대로). 데이터 변경 없음 |
 | `V18__split_order_delivery_address.sql` | 배송 주소 분리(#77): `orders.zip_code varchar(5)`·`road_address varchar(150)`·`detail_address varchar(100)` 추가(NULL 허용, 기본값 없음 → 기존 행 재작성 없음) + `orders_address_parts_check`(셋 다 NULL이거나, 우편번호 숫자 5자리 + 도로명 있음). 기존 주문은 `delivery_address`만 유지하고 세 컬럼은 NULL(백필 안 함 — 한 줄 주소를 안전하게 나눌 수 없음) |
 
 - **빈 DB**: 애플리케이션 기동 시 V1부터 순서대로 실행

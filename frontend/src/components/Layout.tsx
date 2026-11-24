@@ -5,6 +5,7 @@ import type { Role } from '../api/types';
 import { useAuth } from '../auth/AuthContext';
 import { useCart } from '../cart/CartContext';
 import { useOwner } from '../owner/OwnerContext';
+import { isBarePath } from '../routes/layoutPaths';
 import { preloadWhenIdle, type PageName } from '../routes/pages';
 import { DelayedSpinner } from './DelayedSpinner';
 import {
@@ -73,9 +74,6 @@ const IDLE_PRELOAD: Record<Role, PageName[]> = {
   ADMIN: ['adminSettlements', 'adminOwnerApplications', 'adminOutbox'],
 };
 
-// 랜딩·로그인·가입은 자체 화면(제품 소개 + 패널)이라 앱 헤더를 쓰지 않음
-const BARE_PATHS = ['/', '/login', '/signup'];
-
 /** 바깥 클릭·Esc로 닫히는 팝오버 상태 */
 function usePopover() {
   const [open, setOpen] = useState(false);
@@ -103,7 +101,8 @@ export function Layout() {
     return preloadWhenIdle(IDLE_PRELOAD[me.role]);
   }, [me]);
 
-  if (BARE_PATHS.includes(location.pathname)) {
+  // 랜딩·AuthShell 화면(로그인·가입·비밀번호 찾기·이메일 인증·소셜 결과)은 자체 헤더 — 앱 헤더를 겹쳐 그리지 않음
+  if (isBarePath(location.pathname)) {
     return (
       <Suspense key={location.pathname} fallback={<DelayedSpinner />}>
         <Outlet />

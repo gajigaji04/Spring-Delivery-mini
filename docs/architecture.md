@@ -223,7 +223,7 @@ src/main/java/com/sparta/springdeliverymini
 │   ├── PaymentRefund.java               # 환불 1건 (V21) — 정산 차감 단위, 생성 후 불변
 │   ├── PgProvider.java / PgCancelRequest.java / PgCancelStatus.java # PG 공급자(TOSS), PG 취소 요청 PENDING → DONE / FAILED (V20)
 │   └── RefreshToken.java / RefreshTokenRevokeReason.java # Refresh Token(해시만), 폐기 사유 ROTATED·LOGOUT·REUSE_DETECTED (V15)
-├── dto                                  # 요청(Request) / 응답(Response) 객체, PageQuery(목록 page·size 검증, id 오름차순 고정), KeysetQuery(주문 목록 afterId·size, #54)
+├── dto                                  # 요청(Request) / 응답(Response) 객체, PageQuery(목록 page·size 검증, id 오름차순 고정), KeysetQuery(주문 목록 afterId·size, #54 — 주문 목록은 최신순 `OrderRepository.NEWEST_FIRST`, #98)
 └── exception
     ├── ApiException.java                # 상태 코드를 담아 던지는 예외
     ├── ErrorCode.java                   # 응답 code — 401 토큰 만료·위조, Refresh Token 거부 사유 구분 (V15)
@@ -626,6 +626,9 @@ Refresh Token이 쿠키라 다른 사이트가 재발급·로그아웃을 위조
   - 응답은 가입 여부와 관계없이 항상 202, 메일은 **커밋 뒤 전용 스레드**(`mail.PasswordResetMailer`)에서 발송 → 응답 본문·시간으로 가입 여부를 알 수 없음
   - 토큰은 SHA-256 해시만 저장(Refresh Token과 같은 방식), 재설정은 행 `FOR UPDATE`로 링크 1개당 1번만 성공
   - 토큰을 쿼리가 아니라 `#` 조각에 둠 — 조각은 서버로 전송되지 않아 Vercel·Render 접근 로그·Referer에 남지 않음. 프론트는 읽은 뒤 주소창에서 지움
+    - 읽기·지우기 분리(#98, `frontend/src/auth/useFragmentToken`): 렌더 중에는 읽기만, 화면이 붙은 뒤(useEffect) `history.replaceState`로 지움(`history.state` 유지). 렌더 중에 지우면 React가 첫 렌더를 버리고 다시 그릴 때 빈 주소를 읽어 토큰을 잃음 — 배포에서 재설정 링크가 이메일 입력 화면으로 열리던 원인. 이메일 인증도 같은 훅
+    - `token=`이 있는데 형식(43자)이 깨졌으면 "링크가 올바르지 않아요" 안내, 만료·사용된 토큰은 서버 400 `PASSWORD_RESET_TOKEN_INVALID` 메시지 + 다시 요청 링크
+    - 비밀번호 찾기·이메일 인증·소셜 결과 화면은 자체 헤더(`AuthShell`)라 앱 헤더를 겹쳐 그리지 않음(`frontend/src/routes/layoutPaths`)
   - 남용 방지: 같은 회원에게 1분 안에 재발송하지 않음(회원 행 잠금 안에서 확인), 새 링크를 보내면 이전 링크 무효
   - 재설정하면 그 회원의 **모든** Refresh Token 계열 폐기(`PASSWORD_CHANGED`) — 비밀번호가 새었을 수 있는 상황
   - Redis 미사용: 비밀번호를 바꾸는 권한이라 DB 행·제약으로 판단 ("Redis는 보조 수단")
@@ -661,7 +664,7 @@ Refresh Token이 쿠키라 다른 사이트가 재발급·로그아웃을 위조
 - 역할이 바뀌어도 이미 발급된 Access(최대 15분)의 `role`은 그대로 → URL 규칙(`SecurityConfig`)은 재발급 전까지 CUSTOMER로 판단, Service는 DB 역할로 재확인.
   `/api/users/refresh`가 DB 역할로 새 Access를 주므로 프론트는 승인 확인 후 재발급 → `/me` 재조회
 - 진행 중 주문이 있으면 신청·승인 409 (전환 후 고객 API가 403이 되어 그 주문을 다룰 수 없으므로). 승인 직전 1번만 검사 — 같은 순간 들어온 새 주문은 막지 못함
-- 관리자 화면(`AdminOwnerApplicationsPage`): 거절은 행 아래 사유 입력 폼(필수·255자, 거절 확정·취소) — 사유 기본값은 없음(DTO `@NotBlank`·엔티티·DB CHECK 모두 필수). 예전 `window.prompt`는 브라우저가 대화상자를 막으면 창 없이 취소되어 바꿈(2026-11-24)
+- 관리자 화면(`AdminOwnerApplicationsPage`): 거절은 행 아래 사유 입력 폼(필수·255자, 거절 확정·취소) — 사유 기본값은 없음(DTO `@NotBlank`·엔티티·DB CHECK 모두 필수). 예전 `window.prompt`는 브라우저가 대화상자를 막으면 창 없이 취소되어 바꿈(2026-11-24). 거절에 성공하면 거절됨 탭으로 자동 전환(#98 — 승인 대기에 남으면 빈 목록만 보여 처리 여부를 알 수 없었음)
 - 데모 관리자(`DemoAdminScope`)는 데모 회원의 신청만 조회 → 소셜 가입 등 일반 회원 신청은 어느 상태 탭에도 안 보임(의도, 화면에 안내 문구). 배포 DB에는 일반 관리자가 없으므로 실제 신청 확인은 일반 관리자 계정이나 DB 조회로
 - 상세 API·오류는 [API 명세 — 사장님 전환 신청](api.md#사장님-전환-신청-v17), 테이블은 [데이터베이스](database.md#owner_applications--사장님-전환-신청-v17)
 

@@ -40,7 +40,7 @@ export default function OwnerHomePage() {
   const today = seoulDate(now);
 
   const stats = useMemo(() => todayStats(orders, today), [orders, today]);
-  // 처리 대기열: 오래 기다린 주문부터 (목록은 최신순이라 뒤집음)
+  // 처리 대기열: 오래 기다린 주문부터 (목록은 주문 시각 최신순이라 뒤집음)
   const waitList = useMemo(() => orders.filter((o) => o.status === 'PAYMENT_COMPLETED').reverse(), [orders]);
   const accList = useMemo(() => orders.filter((o) => o.status === 'ORDER_ACCEPTED').reverse(), [orders]);
   const bars = useMemo(() => dailySales(orders, today), [orders, today]);

@@ -87,6 +87,8 @@ export const storeApi = {
 export const menuApi = {
   // 서버에 매장 필터가 없음 → 매장 화면은 받은 페이지에서 storeId로 거른다 (docs/api.md 메뉴 목록)
   list: (page: number, size = 100) => getPage<Menu>('/api/menus', { page, size }, false),
+  // 없거나 삭제된 메뉴는 404 MENU_NOT_FOUND — 장바구니 판매 종료 확인에 씀 (cart/cartValidation)
+  get: (id: number) => get<Menu>(`/api/menus/${id}`, undefined, false),
   create: async (body: { storeId: number; name: string; price: number; description?: string }) =>
     (await request<Menu>('/api/menus', { method: 'POST', body })).data,
   update: async (id: number, body: { name: string; price: number; description?: string }) =>

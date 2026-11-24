@@ -12,6 +12,7 @@ import {
   itemsLabel,
   minutesSince,
   orderTimeLabel,
+  compareNewestFirst,
   ordersOfStore,
   seoulDate,
   settlementsCsv,
@@ -203,5 +204,20 @@ describe('사장님 매장 범위', () => {
     const snack2 = { ...order(5, 'PAYMENT_COMPLETED', '2026-11-24T10:10:00'), storeId: 4 };
     expect(ordersOfStore([chicken, snack1, snack2], 4).map((o) => o.id)).toEqual([5, 2]);
     expect(ordersOfStore([chicken, snack1], null)).toEqual([]);
+  });
+
+  it('id가 아니라 주문 시각 최신순 — 나중에 넣고 시각만 과거인 주문(데모 시더)은 아래로', () => {
+    const now = { ...order(1, 'PAYMENT_COMPLETED', '2026-11-24T10:00:00'), storeId: 4 };
+    const later = { ...order(2, 'ORDER_ACCEPTED', '2026-11-24T10:05:00'), storeId: 4 };
+    const backdated = { ...order(9, 'DELIVERY_COMPLETED', '2026-11-21T19:30:00'), storeId: 4 };
+    expect(ordersOfStore([now, backdated, later], 4).map((o) => o.id)).toEqual([2, 1, 9]);
+  });
+
+  it('같은 시각이면 id 내림차순, 소수 초 자릿수가 달라도 시각 순서', () => {
+    const a = { id: 3, createdAt: '2026-11-24T10:00:00' };
+    const b = { id: 7, createdAt: '2026-11-24T10:00:00' };
+    const c = { id: 1, createdAt: '2026-11-24T10:00:00.5' };
+    const d = { id: 2, createdAt: '2026-11-24T10:00:00.123' };
+    expect([a, b, c, d].sort(compareNewestFirst).map((o) => o.id)).toEqual([1, 2, 7, 3]);
   });
 });
